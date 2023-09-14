@@ -3,6 +3,20 @@
   <PropertyGroup>
     <TargetFramework>netstandard2.0</TargetFramework>
     <LangVersion>latest</LangVersion>
+
+	  <PackageId>Vip.RestClient</PackageId>
+    <version>1.0.0</version>
+    <License>MIT</License>
+    <Authors>Leandro Ferreira</Authors>
+    <Company>VIP Soluções</Company>
+    <PackageDescription>Métodos para cliente API REST</PackageDescription>
+    <Description>Métodos para cliente API REST</Description>
+    <RepositoryUrl>https://github.com/leandrovip/Vip.RestClient</RepositoryUrl>
+    <PackageProjectUrl>https://github.com/leandrovip/Vip.RestClient</PackageProjectUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>Client;REST;API;VIP</PackageTags>
+    <Title>Vip.RestClient</Title>
+    <Summary>Biblioteca com métodos básicos para acessar uma API REST com o propósito de ganhar mais produtividade no desenvolvimento.</Summary>
   </PropertyGroup>
 
   <ItemGroup>
@@ -13,6 +27,7 @@
     <Folder Include="Events\" />
     <Folder Include="Exceptions\" />
     <Folder Include="Models\" />
+    <Folder Include="Extensions\" />
     <Folder Include="Utils\" />
   </ItemGroup>
 
