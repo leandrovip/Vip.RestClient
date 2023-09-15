@@ -10,7 +10,7 @@ using Newtonsoft.Json;
 
 namespace Vip.RestClient
 {
-    public class RestClient
+    public class ClientApi
     {
         #region Events
 
@@ -33,7 +33,7 @@ namespace Vip.RestClient
 
         #region Constructors
 
-        public RestClient(string baseUrl, HttpClientHandler clientHandler = null)
+        public ClientApi(string baseUrl, HttpClientHandler clientHandler = null)
         {
             if (!baseUrl.EndsWith("/")) baseUrl += '/';
             BaseUri = new Uri(baseUrl);

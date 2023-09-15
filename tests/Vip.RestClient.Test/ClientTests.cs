@@ -28,7 +28,7 @@ public class ClientTests
 
         #endregion
 
-        var client = new RestClient("https://httpbin.org/");
+        var client = new ClientApi("https://httpbin.org/");
 
         #region GET
 
