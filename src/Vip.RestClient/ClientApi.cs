@@ -7,6 +7,7 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 
 namespace Vip.RestClient
 {
@@ -247,7 +248,8 @@ namespace Vip.RestClient
 
         private HttpContent SerializeContent(object value)
         {
-            var jsonValue = JsonConvert.SerializeObject(value);
+            var jsonSettings = new JsonSerializerSettings {ContractResolver = new CamelCasePropertyNamesContractResolver()};
+            var jsonValue = JsonConvert.SerializeObject(value, jsonSettings);
             return new StringContent(jsonValue, Encoding.UTF8, "application/json");
         }
 
