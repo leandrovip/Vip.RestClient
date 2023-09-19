@@ -7,7 +7,6 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Serialization;
 
 namespace Vip.RestClient
 {
@@ -23,6 +22,7 @@ namespace Vip.RestClient
         #region Fields
 
         private readonly HttpClient _httpClient;
+        private readonly JsonSerializerSettings _jsonSettings;
 
         #endregion
 
@@ -34,16 +34,17 @@ namespace Vip.RestClient
 
         #region Constructors
 
-        public ClientApi(string baseUrl, HttpClientHandler clientHandler = null)
+        public ClientApi(string baseUrl, HttpClientHandler clientHandler = null, JsonSerializerSettings jsonSerializerSettings = null)
         {
             if (!baseUrl.EndsWith("/")) baseUrl += '/';
             BaseUri = new Uri(baseUrl);
 
-            if (clientHandler == null) clientHandler = new HttpClientHandler();
+            clientHandler ??= new HttpClientHandler();
             clientHandler.AutomaticDecompression = DecompressionMethods.GZip | DecompressionMethods.Deflate;
 
             _httpClient = new HttpClient(clientHandler);
             _httpClient.DefaultRequestHeaders.TryAddWithoutValidation("Accept", "application/json");
+            _jsonSettings = jsonSerializerSettings;
         }
 
         #endregion
@@ -248,8 +249,7 @@ namespace Vip.RestClient
 
         private HttpContent SerializeContent(object value)
         {
-            var jsonSettings = new JsonSerializerSettings {ContractResolver = new CamelCasePropertyNamesContractResolver()};
-            var jsonValue = JsonConvert.SerializeObject(value, jsonSettings);
+            var jsonValue = JsonConvert.SerializeObject(value, _jsonSettings);
             return new StringContent(jsonValue, Encoding.UTF8, "application/json");
         }
 

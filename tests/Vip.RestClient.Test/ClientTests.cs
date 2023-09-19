@@ -1,5 +1,7 @@
 ﻿using System;
 using System.Threading.Tasks;
+using Newtonsoft.Json;
+using Newtonsoft.Json.Serialization;
 using Vip.RestClient.Test.Models;
 
 namespace Vip.RestClient.Test;
@@ -28,7 +30,7 @@ public class ClientTests
 
         #endregion
 
-        var client = new ClientApi("https://httpbin.org/");
+        var client = new ClientApi("https://httpbin.org/", jsonSerializerSettings: new JsonSerializerSettings {ContractResolver = new CamelCasePropertyNamesContractResolver()});
 
         #region GET
 
