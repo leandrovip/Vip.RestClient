@@ -68,7 +68,6 @@ namespace Vip.RestClient
         public async Task<Response> PostAsync(string endpoint)
         {
             var uri = new Uri(BaseUri, endpoint);
-
             return await PostAsync(uri, null);
         }
 

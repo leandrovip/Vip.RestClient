@@ -123,6 +123,16 @@ public static class RestExtensions
 
     #region PATCH
 
+    public static async Task<Response<T>> PatchAsync<T>(this ClientApi client, string endpoint, object value, int id)
+    {
+        return await client.PatchAsync<T>($"{endpoint}/{id}", value);
+    }
+
+    public static async Task<Response<T>> PatchAsync<T>(this ClientApi client, string endpoint, object value, Guid id)
+    {
+        return await client.PatchAsync<T>($"{endpoint}/{id}", value);
+    }
+
     public static async Task<Response> PatchAsync(this ClientApi client, string endpoint, object value, int id)
     {
         return await client.PatchAsync($"{endpoint}/{id}", value);

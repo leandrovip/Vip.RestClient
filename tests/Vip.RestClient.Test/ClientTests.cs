@@ -98,6 +98,15 @@ public class ClientTests
 
         #region PATCH
 
+        Console.WriteLine("PATCH (response) - Sem parâmetros");
+        WriteResponse(await client.PatchAsync<Models.Response>("anything", data));
+
+        Console.WriteLine("PATCH (response) - Parâmetro Inteiro");
+        WriteResponse(await client.PatchAsync<Models.Response>("anything", data, 32));
+
+        Console.WriteLine("PATCH (response) - Parâmetro GUID");
+        WriteResponse(await client.PatchAsync<Models.Response>("anything", data, guid));
+
         Console.WriteLine("PATCH - Sem Parâmetros");
         WriteResponse(await client.PatchAsync("anything", data));
 
@@ -110,6 +119,7 @@ public class ClientTests
         #endregion
 
         Console.WriteLine("### Final de Teste ###");
+        Console.ReadKey();
     }
 
     private static void WriteResponse(Response<Models.Response> response)
