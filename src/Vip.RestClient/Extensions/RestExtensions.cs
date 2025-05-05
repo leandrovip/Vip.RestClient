@@ -147,6 +147,16 @@ public static class RestExtensions
 
     #region DELETE
 
+    public static async Task<Response<T>> DeleteAsync<T>(this ClientApi client, string endpoint, int id)
+    {
+        return await client.DeleteAsync<T>($"{endpoint}/{id}");
+    }
+
+    public static async Task<Response<T>> DeleteAsync<T>(this ClientApi client, string endpoint, Guid id)
+    {
+        return await client.DeleteAsync<T>($"{endpoint}/{id}");
+    }
+
     public static async Task<Response> DeleteAsync(this ClientApi client, string endpoint, int id)
     {
         return await client.DeleteAsync($"{endpoint}/{id}");
