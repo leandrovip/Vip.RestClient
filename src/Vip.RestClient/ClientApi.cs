@@ -61,6 +61,14 @@ namespace Vip.RestClient
             return await SendMessageAsync<T>(uri, message);
         }
 
+        public async Task<Response> GetAsync(string endpoint)
+        {
+            var uri = new Uri(BaseUri, endpoint);
+            using var message = new HttpRequestMessage(HttpMethod.Get, uri);
+
+            return await SendMessageAsync(message);
+        }
+
         #endregion
 
         #region POST
@@ -146,11 +154,27 @@ namespace Vip.RestClient
             return await SendMessageAsync<T>(uri, message);
         }
 
+        public async Task<Response<T>> PatchAsync<T>(string endpoint)
+        {
+            var uri = new Uri(BaseUri, endpoint);
+            using var message = new HttpRequestMessage(new HttpMethod("PATCH"), uri);
+
+            return await SendMessageAsync<T>(uri, message);
+        }
+
         public async Task<Response> PatchAsync(string endpoint, object value)
         {
             var uri = new Uri(BaseUri, endpoint);
             using var message = new HttpRequestMessage(new HttpMethod("PATCH"), uri);
             message.Content = SerializeContent(value);
+
+            return await SendMessageAsync(message);
+        }
+
+        public async Task<Response> PatchAsync(string endpoint)
+        {
+            var uri = new Uri(BaseUri, endpoint);
+            using var message = new HttpRequestMessage(new HttpMethod("PATCH"), uri);
 
             return await SendMessageAsync(message);
         }
