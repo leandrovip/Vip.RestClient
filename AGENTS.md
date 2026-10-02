@@ -2,6 +2,8 @@
 
 Este arquivo contém regras operacionais para mudanças no repositório. A documentação funcional está em [`docs/README.md`](docs/README.md); consulte também [estrutura](docs/estrutura.md), [arquitetura](docs/arquitetura.md), [uso](docs/uso.md), [desenvolvimento](docs/desenvolvimento.md) e [particularidades](docs/particularidades.md).
 
+Para contexto portátil de OpenCode, Codex, Claude e outros LLMs, consulte [`llms.txt`](llms.txt); ele não substitui estas regras nem as fontes versionadas.
+
 ## Mapa rápido
 
 - `src/Vip.RestClient/`: biblioteca `Vip.RestClient`, projeto `netstandard2.0`.

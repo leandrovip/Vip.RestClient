@@ -4,6 +4,7 @@ Documentação em português do Brasil para o snapshot atual do repositório. El
 
 ## Navegação
 
+- [Guia portátil para LLMs](../llms.txt): contexto compacto e links para fontes do repositório; não substitui `AGENTS.md` ou código versionado.
 - [Estrutura do repositório](estrutura.md): mapa hierárquico e localização dos tipos.
 - [Arquitetura e contratos](arquitetura.md): fluxo de transporte, respostas, eventos, serialização e JWT.
 - [Uso](uso.md): exemplos C# seguros e observações de chamada.

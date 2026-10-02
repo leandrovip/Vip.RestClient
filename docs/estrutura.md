@@ -6,6 +6,7 @@ Mapa hierárquico do snapshot documentado. Arquivos gerados e locais de IDE (`bi
 Vip.RestClient/
 ├── AGENTS.md                         # orientação operacional geral
 ├── .gitignore                         # regras atuais; contém marcadores de conflito
+├── llms.txt                           # guia portátil e índice contextual para LLMs
 ├── LICENSE                           # licença MIT
 ├── README.md                         # apresentação, instalação e início rápido
 ├── docs/

@@ -4,7 +4,7 @@
 [![Downloads no NuGet](https://img.shields.io/nuget/dt/Vip.RestClient?label=NuGet%20downloads&style=flat-square)](https://www.nuget.org/packages/Vip.RestClient/)
 [![Licença MIT](https://img.shields.io/github/license/leandrovip/Vip.RestClient)](LICENSE)
 
-Biblioteca cliente REST para .NET, com chamadas assíncronas, respostas tipadas ou não tipadas e extensões para parâmetros e formulários. Este README resume instalação e uso inicial; os [documentos do projeto](docs/README.md) detalham os contratos e particularidades.
+Biblioteca cliente REST para .NET, com chamadas assíncronas, respostas tipadas ou não tipadas e extensões para parâmetros e formulários. Este README resume instalação e uso inicial; os [documentos do projeto](docs/README.md) detalham os contratos e particularidades. Para contexto portátil de LLMs, consulte [`llms.txt`](llms.txt); ele não substitui documentação nem `AGENTS.md`.
 
 ## Visão geral
 
