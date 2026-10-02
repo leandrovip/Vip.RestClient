@@ -58,6 +58,7 @@ Vip.RestClient/
         ├── ApiSurfaceCharacterizationTests.cs # confere snapshot versionado da API
         ├── ApiSurface.baseline.txt    # baseline versionada da API
         ├── ClientApiTests.cs          # caracterização de requests/responses
+        ├── ExternalHttpClientTests.cs # factory e ownership do HttpClient externo
         ├── RestExtensionsTests.cs     # IDs, parâmetros e formulários
         ├── JwtTests.cs                # parsing e comportamento JWT
         └── Utils/
@@ -76,7 +77,8 @@ Vip.RestClient/
             │   ├── ThrowingPayload.cs
             │   ├── NullableProperty.cs
             │   ├── CultureValues.cs
-            │   └── LegacyValue.cs
+            │   ├── LegacyValue.cs
+            │   └── LegacyConstructorConsumer.cs
             └── Contents/
                 ├── CountingContent.cs
                 ├── FaultingContent.cs
@@ -92,6 +94,6 @@ Vip.RestClient/
 - [`ResponseEvent.cs`](../src/Vip.RestClient/Events/ResponseEvent.cs) define os dados emitidos por `ResponseDataReceived`. [`UnsuccessfulStatusCodeException.cs`](../src/Vip.RestClient/Exceptions/UnsuccessfulStatusCodeException.cs) define as exceções usadas pelos métodos `EnsureSuccessStatusCode`.
 - [`ApiException.cs`](../src/Vip.RestClient/Exceptions/ApiException.cs) é uma classe pública com construtor privado e fábrica interna, não acionada pelo fluxo observado em `ClientApi`.
 - Os tipos no diretório de modelos da demonstração usam namespace `Vip.RestClient.Demo.Models`; não são os envelopes da biblioteca. A demonstração não deve ser confundida com `Vip.RestClient.Tests`, a suíte automatizada.
-- Em `Vip.RestClient.Tests`, `ClientApiTests.cs`, `RestExtensionsTests.cs` e `JwtTests.cs` agrupam a caracterização por área; `ApiSurfaceCharacterizationTests.cs` confere `ApiSurface.baseline.txt`. O subdiretório `Utils/` reúne utilitários de teste, DTOs/modelos e conteúdos/streams controlados pelo teste.
+- Em `Vip.RestClient.Tests`, `ClientApiTests.cs`, `ExternalHttpClientTests.cs`, `RestExtensionsTests.cs` e `JwtTests.cs` agrupam a caracterização por área; `ApiSurfaceCharacterizationTests.cs` confere `ApiSurface.baseline.txt`. `Utils/` reúne handlers/harnesses, DTOs/modelos e conteúdos/streams de apoio, incluindo o consumidor derivado do construtor legado.
 
 Todos os tipos da biblioteca declaram o namespace `Vip.RestClient`, mesmo estando em subpastas. A base mantém tanto namespaces em bloco quanto file-scoped e usa `#region`; isso descreve o código existente e não estabelece uma regra de formatação global.

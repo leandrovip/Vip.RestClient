@@ -47,6 +47,15 @@ namespace Vip.RestClient
             _jsonSettings = jsonSerializerSettings;
         }
 
+        private ClientApi(HttpClient httpClient, string baseUrl, JsonSerializerSettings jsonSerializerSettings)
+        {
+            _httpClient = httpClient ?? throw new ArgumentNullException(nameof(httpClient));
+            if (baseUrl == null) throw new ArgumentNullException(nameof(baseUrl));
+            if (!baseUrl.EndsWith("/")) baseUrl += '/';
+            BaseUri = new Uri(baseUrl);
+            _jsonSettings = jsonSerializerSettings;
+        }
+
         #endregion
 
         #region Client Methods
@@ -336,6 +345,15 @@ namespace Vip.RestClient
             }
 
             return Response<T>.Build(response, contentHeaders, data, errorData, start);
+        }
+
+        #endregion
+
+        #region Static Methods
+
+        public static ClientApi FromHttpClient(string baseUrl, HttpClient httpClient, JsonSerializerSettings jsonSerializerSettings = null)
+        {
+            return new ClientApi(httpClient, baseUrl, jsonSerializerSettings);
         }
 
         #endregion

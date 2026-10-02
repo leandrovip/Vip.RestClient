@@ -37,9 +37,32 @@ public static class Example
 
 `ClientApi` acrescenta a barra final ausente à base. Endpoints relativos são resolvidos contra essa base; iniciar o endpoint com `/` pode remover o caminho existente da base. Respostas HTTP não bem-sucedidas são envelopes, não exceções automáticas.
 
+## Usar um `HttpClient` gerenciado pela aplicação
+
+O construtor original continua recebendo um `HttpClientHandler` opcional e cria seu próprio `HttpClient`. Para adaptar uma instância `HttpClient` existente, use `ClientApi.FromHttpClient(string baseUrl, HttpClient httpClient, JsonSerializerSettings jsonSerializerSettings = null)`. O exemplo recebe o cliente de fora e não o cria nem o descarta:
+
+```csharp
+using System.Net.Http;
+using System.Threading.Tasks;
+using Vip.RestClient;
+
+public static class ExternalClientExample
+{
+    public static async Task<Item> ReadAsync(HttpClient suppliedClient)
+    {
+        var client = ClientApi.FromHttpClient("https://api.example.com/", suppliedClient);
+        Response<Item> response = await client.GetAsync<Item>("items/42");
+        response.EnsureSuccessStatusCode();
+        return response.Data;
+    }
+}
+```
+
+O chamador permanece responsável pelo ciclo de vida e pela configuração da instância. A factory não usa `HttpClient.BaseAddress`, não altera timeout, headers padrão nem descompressão, e não registra integração com DI ou com uma factory de clientes. Se a aplicação usa uma estratégia própria de factory, ela pode passar a instância que gerencia.
+
 ## JSON de saída e status
 
-Objetos passados aos overloads de POST/PUT/PATCH são serializados como JSON UTF-8. Configurações opcionais afetam essa serialização de saída, não o parsing de resposta:
+Objetos passados aos overloads de POST/PUT/PATCH são serializados como JSON UTF-8. `JsonSerializerSettings` opcionais, recebidas pelo construtor legado ou por `FromHttpClient`, afetam essa serialização de saída, não o parsing de resposta:
 
 ```csharp
 using System.Threading.Tasks;
@@ -117,6 +140,8 @@ Para o catálogo das sobrecargas principais de `ClientApi` e extensões, consult
 
 O cliente oferece `SetHeader`, `SetAuthorization`, `SetAuthorizationBearer` e `RemoveAuthorization`. Esses métodos alteram headers padrão do cliente. `BeforeSend` permite observar/modificar a mensagem antes do envio; `ResponseDataReceived` só é chamado no caminho genérico e antes do parsing final. Evite registrar tokens, dados pessoais ou corpos sensíveis em eventos.
 
+Quando o `HttpClient` fornecido é compartilhado, os métodos de headers padrão e `ConfigureHttpClient` alteram a instância comum; alterações podem afetar outros wrappers que a usam. A `baseUrl` não limita o host: endpoints absolutos podem substituí-la, sem uma política de origem adicional.
+
 ## Limitações relevantes
 
-O cliente não expõe `IDisposable` nem aceita `CancellationToken` nos métodos. Falhas de transporte e de parsing podem lançar. `Response<T>.Data` de tipo `Stream` não deve ser presumido utilizável após o retorno, pois a resposta HTTP é descartada. JWT é decodificado, mas não validado. Leia [Arquitetura](arquitetura.md) e [Particularidades](particularidades.md) antes de depender desses comportamentos.
+`ClientApi` não implementa `IDisposable` nem aceita `CancellationToken` nos métodos. Falhas de transporte e de parsing podem lançar. `Response<T>.Data` de tipo `Stream` não deve ser presumido utilizável após o retorno, pois a resposta HTTP é descartada. JWT é decodificado, mas não validado. Leia [Arquitetura](arquitetura.md) e [Particularidades](particularidades.md) antes de depender desses comportamentos.

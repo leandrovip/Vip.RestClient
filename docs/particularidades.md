@@ -17,9 +17,16 @@ Registro dos comportamentos que podem ser fáceis de interpretar incorretamente 
 - `OptionsAsync(endpoint, object)` converte propriedades em headers. Não deve ser confundido com o overload de GET que converte objeto em query.
 - A mutação de headers padrão tem locks parciais; isso não garante segurança total de threads em todas as operações.
 
+## `HttpClient` externo
+
+- `FromHttpClient` recebe a instância exata, usa a `baseUrl` explícita e não modifica `BaseAddress`, `Timeout`, headers padrão ou descompressão do handler. Não acrescenta `Accept` nem infere a base do `HttpClient`.
+- `ClientApi` não implementa `IDisposable`; o wrapper não descarta explicitamente o cliente fornecido. O chamador mantém o ownership e o ciclo de vida.
+- Os métodos `SetHeader`/`SetAuthorization*` e `ConfigureHttpClient` operam sobre o cliente comum. Wrappers que compartilham a instância também compartilham os efeitos dessas alterações; os locks existentes não dão garantia geral de segurança entre threads.
+- A base explícita não é uma allowlist de hosts: endpoints absolutos podem direcionar requests a outra origem e não há guard de origem; headers padrão do cliente podem acompanhar esses requests. Não dependa da factory para isolar headers sensíveis.
+
 ## Serialização
 
-`JsonSerializerSettings` do construtor só vale para serialização de objetos de saída. Desserialização da resposta, parsing do erro e parsing JWT usam chamadas Json.NET sem essas settings. Somente POST genérico recebe `HttpContent` como argumento direto; os demais objetos são serializados como JSON.
+`JsonSerializerSettings` opcionais do construtor ou de `FromHttpClient` só valem para serialização de objetos de saída. Desserialização da resposta, parsing do erro e parsing JWT usam chamadas Json.NET sem essas settings. Somente POST genérico recebe `HttpContent` como argumento direto; os demais objetos são serializados como JSON.
 
 No genérico, strings de sucesso recebem texto. Só conteúdo iniciado literalmente por `%7B` é submetido a URL decode antes de seguir. Isso pode alterar uma string retornada. O tipo `Jwt` exato tem tratamento específico; `Jwt<T>` não.
 

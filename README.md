@@ -81,6 +81,33 @@ public static class ApiExample
 
 `ClientApi` normaliza a barra final da URL-base e resolve endpoints relativos em relação a ela. Um endpoint iniciado por `/` pode substituir o caminho existente da base. Não coloque credenciais ou dados reais em exemplos, código de demonstração ou logs.
 
+### Reutilizar um `HttpClient` da aplicação
+
+Além do construtor legado, há a factory pública:
+
+`public static ClientApi FromHttpClient(string baseUrl, HttpClient httpClient, JsonSerializerSettings jsonSerializerSettings = null)`.
+
+Trecho de uso dentro de um método assíncrono; o `HttpClient` é recebido da aplicação e não é criado nem descartado pelo wrapper:
+
+```csharp
+using System.Net.Http;
+using System.Threading.Tasks;
+using Vip.RestClient;
+
+public static class SharedClientExample
+{
+    public static async Task<Item> ReadItemAsync(HttpClient suppliedClient)
+    {
+        var api = ClientApi.FromHttpClient("https://api.example.com/", suppliedClient);
+        Response<Item> response = await api.GetAsync<Item>("items/42");
+        response.EnsureSuccessStatusCode();
+        return response.Data;
+    }
+}
+```
+
+O exemplo não deve ser executado. O consumidor mantém a responsabilidade pelo ciclo de vida e pela configuração desse `HttpClient`. A factory usa o `baseUrl` explícito; não infere a base de `HttpClient.BaseAddress`, nem altera timeout, headers padrão ou descompressão. Ela não configura nem registra integração de DI ou de factory de clientes.
+
 ## Operações e formas de resposta
 
 | Operação | Sobrecargas principais | Observações |
@@ -110,7 +137,7 @@ O overload de ID também é genérico, por exemplo `await client.GetAsync<Item>(
 
 ### JSON e formulários
 
-Objetos enviados por POST, PUT e PATCH são serializados como JSON UTF-8. As `JsonSerializerSettings` opcionais do construtor são usadas somente na serialização de saída, não na desserialização das respostas.
+Objetos enviados por POST, PUT e PATCH são serializados como JSON UTF-8. As `JsonSerializerSettings` opcionais do construtor ou de `FromHttpClient` são usadas somente na serialização de saída, não na desserialização das respostas.
 
 O POST genérico também pode receber `HttpContent` pronto por meio de `PostAsync<T>(endpoint, content)`. Não há overload não genérico de POST especificamente tipado para `HttpContent`. Se uma instância for passada ao parâmetro `object`, ela segue o caminho de serialização JSON desse overload, não o envio direto de conteúdo.
 
@@ -119,6 +146,8 @@ As extensões `MultipartFormPostAsync<T>` aceitam `Dictionary<string, string>`, 
 ### Headers, timeout e eventos
 
 Antes de enviar requisições, podem ser configurados headers padrão com `SetHeader`, `SetAuthorization` ou `SetAuthorizationBearer`; `RemoveAuthorization` remove o header de autorização. Os auxiliares de autorização não validam nem renovam credenciais.
+
+Ao compartilhar o `HttpClient` externo entre wrappers, essas alterações de headers padrão são compartilhadas. A URL-base não limita o destino: endpoints absolutos podem apontar para outro host, e headers padrão podem acompanhar esses requests. Não use defaults sensíveis supondo que a factory imponha isolamento de origem.
 
 No corpo do método assíncrono que prepara o cliente, antes da primeira chamada:
 
@@ -139,7 +168,7 @@ O fluxo não genérico não lê nem guarda corpo em caso de sucesso. No genéric
 
 ## Limitações importantes
 
-- Os métodos não recebem `CancellationToken`; `ClientApi` não implementa `IDisposable` e não fornece política própria de retry ou renovação de token.
+- Os métodos não recebem `CancellationToken`; `ClientApi` não implementa `IDisposable` e não fornece política própria de retry ou renovação de token. O `HttpClient` passado à factory continua sob responsabilidade do chamador.
 - `Response<T>.Data` de tipo `Stream` não deve ser presumido utilizável após o retorno: a resposta HTTP é descartada antes que o envelope seja devolvido.
 - `ResponseDataReceived` não é chamado no caminho não genérico; no fluxo genérico, `Content` é nulo para `byte[]` e `Stream`.
 - As configurações JSON fornecidas ao construtor valem apenas para serialização de saída.
@@ -170,7 +199,7 @@ dotnet test ./tests/Vip.RestClient.Tests/Vip.RestClient.Tests.csproj --configura
 
 O comando `dotnet test` deve apontar explicitamente para o projeto `.Tests`; a suíte usa handler HTTP falso para testar sem rede. Seus testes de caracterização registram comportamentos legados, não os corrigem.
 
-Validação final registrada em Windows com SDK .NET `10.0.401`, em 2026-10-01: restore e build da solução passaram sem avisos nem erros; a suíte terminou com 57 aprovados, 0 falhos e 0 ignorados. Linux não foi validado, e a demonstração e o empacotamento não foram executados. Isso não constitui prova de compatibilidade binária completa; detalhes e limites estão em [Desenvolvimento](docs/desenvolvimento.md).
+Validação integrada em Windows com SDK .NET `10.0.401` (2026-10-01): restore/build da solução sem avisos nem erros; suíte final com 70 aprovados, 0 falhos e 0 ignorados (57 existentes + 13 novos). Linux e projetos consumidores reais não foram validados; demonstração e empacotamento não foram executados. Veja [Desenvolvimento](docs/desenvolvimento.md) para o escopo do snapshot de API.
 
 `tests/Vip.RestClient.Demo` é uma demonstração manual, não uma suíte de testes. Ela faz requisições HTTP reais ao httpbin e aguarda `Console.ReadKey()`. **Não execute como validação automática.** Seu target é `net9.0-windows`; isso não altera o target da biblioteca.
 

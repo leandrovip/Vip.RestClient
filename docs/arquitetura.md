@@ -4,21 +4,25 @@ Este texto descreve o snapshot atual com base principalmente em [`ClientApi.cs`]
 
 ## Inicialização e URI
 
-`ClientApi` recebe `baseUrl`, um `HttpClientHandler` opcional e `JsonSerializerSettings` opcionais. Acrescenta `/` ao fim de `baseUrl` quando ausente e cria `BaseUri`. Cria seu próprio `HttpClient` a partir do handler fornecido ou de um novo; não recebe um `HttpClient` pronto. Sobrescreve `AutomaticDecompression` para `GZip | Deflate` e adiciona `Accept: application/json`.
+O construtor legado `ClientApi(string baseUrl, HttpClientHandler clientHandler = null, JsonSerializerSettings jsonSerializerSettings = null)` permanece inalterado: acrescenta `/` ao fim de `baseUrl` quando ausente, cria `BaseUri` e um `HttpClient` próprio a partir do handler fornecido ou de um novo. Nesse caminho, sobrescreve `AutomaticDecompression` para `GZip | Deflate` e adiciona `Accept: application/json`. O construtor recebe `HttpClientHandler`, não uma instância `HttpClient`.
 
-Os métodos resolvem endpoints com `new Uri(BaseUri, endpoint)`. URI absoluta pode substituir a base; um endpoint iniciado por `/` pode trocar o caminho-base pelo caminho na raiz do host. A normalização da barra final não impede esse comportamento normal de resolução de URI.
+Para receber um cliente já criado pela aplicação, a factory pública é `ClientApi.FromHttpClient(string baseUrl, HttpClient httpClient, JsonSerializerSettings jsonSerializerSettings = null)`. Ela rejeita `httpClient == null` primeiro com `ArgumentNullException` (`ParamName == "httpClient"`); com cliente válido, `baseUrl == null` resulta em `ArgumentNullException` (`ParamName == "baseUrl"`).
+
+A factory passa a instância exata de `HttpClient` ao construtor privado do wrapper e cria `BaseUri` a partir do `baseUrl` explícito, normalizado com `/` final. Não cria outro cliente nem altera `BaseAddress`, `Timeout`, `DefaultRequestHeaders` (incluindo `Accept`) ou configuração de descompressão do handler. Não infere a base de `HttpClient.BaseAddress`. URI malformada segue o comportamento de `System.Uri`; não há validação adicional de esquema prometida.
+
+Ambos os caminhos resolvem endpoints com `new Uri(BaseUri, endpoint)`. URI absoluta pode substituir a base; um endpoint iniciado por `/` pode trocar o caminho-base pelo caminho na raiz do host. A normalização da barra final não impede esse comportamento normal de resolução de URI.
 
 ## Fluxo de requisição e ciclo de vida
 
 As APIs assíncronas abrangem GET, POST, PUT, PATCH, DELETE e OPTIONS. Em ambos os fluxos internos, `BeforeSend` é emitido com o `HttpRequestMessage` antes do registro do instante inicial; se um handler lançar, a chamada também lança e o envio não ocorre. O envio usa `HttpCompletionOption.ResponseHeadersRead`.
 
-O cliente não implementa `IDisposable` e seus métodos não aceitam `CancellationToken`. Não há política própria de retry, renovação ou validação de token. `ConfigureHttpClient(Action<HttpClient>)` permite configurar o `HttpClient` interno, inclusive seu timeout; os valores padrão de timeout não são substituídos pela biblioteca. Os métodos normalmente colocam a mensagem de requisição e a resposta em `using`, mas o caminho de OPTIONS cria a mensagem sem `using`.
+`ClientApi` não implementa `IDisposable` e seus métodos não aceitam `CancellationToken`. Não há política própria de retry, renovação ou validação de token. Com `FromHttpClient`, ownership e ciclo de vida da instância permanecem com o chamador, que também pode configurá-la via `ConfigureHttpClient(Action<HttpClient>)` enquanto estiver ativa. A factory não registra serviços nem cria integração automática com DI ou com uma factory de clientes; a aplicação pode fornecer uma instância que ela própria gerencia. A biblioteca não descarta automaticamente o cliente externo. Entretanto, `ConfigureHttpClient` entrega a instância real ao callback; se o consumidor chamar `Dispose` nesse callback ou diretamente, encerrará o cliente compartilhado e afetará todos os wrappers que o utilizam. Os métodos normalmente colocam a mensagem de requisição e a resposta em `using`, mas o caminho de OPTIONS cria a mensagem sem `using`.
 
 ## Conteúdo enviado
 
 Objetos enviados em POST, PUT e PATCH são serializados por `JsonConvert.SerializeObject(value, _jsonSettings)` e enviados como UTF-8 `application/json`. O overload genérico `PostAsync<T>(string, HttpContent)` e as extensões de formulário enviam `HttpContent` diretamente; não passam esse conteúdo pela serialização JSON. Não há overload não genérico de POST especificamente tipado para `HttpContent`: se um `HttpContent` for passado ao overload `PostAsync(string, object)`, ele será tratado pelo caminho de serialização do parâmetro `object`.
 
-As `JsonSerializerSettings` fornecidas são usadas somente na serialização de saída. `GetResponseAsync<T>` desserializa corpos JSON com `JsonConvert.DeserializeObject<T>(content)` sem settings. Parsing de corpo de erro e de conteúdo JWT também não reaproveita `_jsonSettings`.
+As `JsonSerializerSettings` opcionais fornecidas ao construtor ou à factory são usadas somente na serialização de saída. `GetResponseAsync<T>` desserializa corpos JSON com `JsonConvert.DeserializeObject<T>(content)` sem settings. Parsing de corpo de erro e de conteúdo JWT também não reaproveita `_jsonSettings`.
 
 ## Leitura de resposta e envelopes
 
@@ -66,7 +70,9 @@ Tabela das principais sobrecargas de `ClientApi` e das extensões públicas de `
 
 O overload de `PostAsync(string, object)` serializa seu argumento como JSON. A ausência de um overload não genérico específico para `HttpContent` não significa que a linguagem impeça passar uma instância ao parâmetro `object`; esse caso não é o envio direto de conteúdo que o overload genérico `PostAsync<T>(string, HttpContent)` oferece. Para OPTIONS, o argumento objeto também representa propriedades convertidas em headers, não query string.
 
-Headers padrão podem ser alterados com `SetHeader`, `SetAuthorization`, `SetAuthorizationBearer` e `RemoveAuthorization`. Há locks em algumas mutações, mas isso não constitui uma garantia de segurança completa entre threads para todas as operações do cliente.
+Headers padrão podem ser alterados com `SetHeader`, `SetAuthorization`, `SetAuthorizationBearer` e `RemoveAuthorization`. Com um cliente compartilhado, essas chamadas e `ConfigureHttpClient` modificam a mesma instância e os respectivos headers padrão são observáveis por todos os wrappers que a usam. Há locks em algumas mutações, mas isso não constitui uma garantia de segurança completa entre threads para todas as operações do cliente.
+
+`BaseUri` não é uma fronteira de segurança: endpoints absolutos podem direcionar chamadas a outro host e não há verificação de origem adicionada pela factory. Headers padrão do `HttpClient` acompanham requests enviados por ele, inclusive wrappers; se contiverem dados sensíveis, cabe à aplicação isolar clientes/credenciais e controlar os destinos. A reutilização não cria isolamento por wrapper.
 
 ## JWT
 
