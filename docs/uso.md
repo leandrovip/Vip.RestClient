@@ -62,9 +62,38 @@ O chamador permanece responsável pelo ciclo de vida e pela configuração da in
 
 ## Enviar uma request preparada com cancelamento
 
-`ClientApi` também oferece `SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)` e `SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)`, que retornam `Task<Response>` e `Task<Response<T>>`. São os únicos métodos com token por chamada; as sobrecargas de conveniência por verbo e suas extensões continuam sem `CancellationToken`.
+`ClientApi` também oferece `SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)` e `SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)`, que retornam `Task<Response>` e `Task<Response<T>>`. Junto com `DownloadAsync`, são os únicos métodos com token por chamada; as sobrecargas de conveniência por verbo e suas extensões continuam sem `CancellationToken`.
 
 O consumidor prepara a mensagem e seu `HttpContent`, aguarda o envio e mantém ownership para descartá-los (por exemplo, com `using`). O conteúdo segue diretamente, sem serialização JSON automática nem uso das `JsonSerializerSettings` do cliente. URI relativa da mensagem é resolvida contra `BaseUri` explícita; URI absoluta continua podendo substituir a base. O token é obrigatório; use `CancellationToken.None` quando não houver cancelamento a solicitar. Consulte [Arquitetura](arquitetura.md) para ordem de validação/eventos, buffering e limites da cooperação do token.
+
+## Baixar para um stream fornecido pelo consumidor
+
+`DownloadAsync(string endpoint, Stream destination, CancellationToken cancellationToken)` envia um GET e copia o corpo de sucesso para um stream gravável da aplicação. Este exemplo recebe um `HttpClient` e um destino externos; os dois continuam sob responsabilidade do chamador:
+
+```csharp
+using System.IO;
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+using Vip.RestClient;
+
+public static class DownloadExample
+{
+    public static async Task DownloadAsync(
+        HttpClient suppliedClient,
+        Stream destination,
+        CancellationToken cancellationToken)
+    {
+        var api = ClientApi.FromHttpClient("https://api.example.com/", suppliedClient);
+        Response response = await api.DownloadAsync("files/example", destination, cancellationToken);
+        response.EnsureSuccessStatusCode();
+    }
+}
+```
+
+O trecho é ilustrativo e não deve ser executado. A biblioteca não descarta nem reposiciona o destino; os bytes começam na posição corrente. Em status HTTP malsucedido, o corpo de erro não é copiado e `ErrorResponseData` permanece `null`, mas os metadados são retornados e `EnsureSuccessStatusCode()` pode lançar. Uma falha durante envio ou cópia pode deixar bytes parciais; não há rollback do destino.
+
+Para preservar um arquivo anterior em caso de falha, a aplicação pode usar um caminho temporário exclusivo, remover esse temporário quando houver falha e promovê-lo ao nome final apenas após resposta bem-sucedida e cópia concluída. Evite abrir o arquivo final com `FileMode.Create` antes da chamada, pois isso o trunca de imediato. A aplicação controla a limpeza e a promoção; não há garantia de que a movimentação seja sempre atômica, inclusive entre sistemas de arquivos. O timeout de `HttpClient` cobre a espera dos headers; um token com prazo pode limitar adicionalmente o trabalho da aplicação, sujeito à cooperação do runtime e dos streams. Consulte [Arquitetura](arquitetura.md) para os limites de buffer e cancelamento.
 
 ## JSON de saída e status
 
@@ -150,4 +179,4 @@ Quando o `HttpClient` fornecido é compartilhado, os métodos de headers padrão
 
 ## Limitações relevantes
 
-`ClientApi` não implementa `IDisposable`. Somente os novos overloads `SendAsync` recebem `CancellationToken`; os métodos de conveniência por verbo e suas extensões continuam sem token. Falhas de transporte e de parsing podem lançar. `Response<T>.Data` de tipo `Stream` não deve ser presumido utilizável após o retorno, pois a resposta HTTP é descartada. JWT é decodificado, mas não validado. Leia [Arquitetura](arquitetura.md) e [Particularidades](particularidades.md) antes de depender desses comportamentos.
+`ClientApi` não implementa `IDisposable`. Os overloads `SendAsync` e `DownloadAsync` recebem `CancellationToken`; os outros métodos de conveniência por verbo e suas extensões continuam sem token. Falhas de transporte e de parsing podem lançar. `Response<T>.Data` de tipo `Stream` nos métodos de leitura existentes não deve ser presumido utilizável após o retorno, pois a resposta HTTP é descartada; `DownloadAsync` copia para um destino externo enquanto a resposta está aberta. JWT é decodificado, mas não validado. Leia [Arquitetura](arquitetura.md) e [Particularidades](particularidades.md) antes de depender desses comportamentos.

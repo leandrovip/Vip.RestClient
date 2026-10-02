@@ -5,10 +5,19 @@ Registro dos comportamentos que podem ser fáceis de interpretar incorretamente 
 ## Respostas, erros e corpo
 
 - Status HTTP malsucedido normalmente produz um `Response`/`Response<T>`; exceção só é lançada quando se chama `EnsureSuccessStatusCode` (ou sua versão genérica). Já transporte, handlers de eventos e alguns parses podem lançar antes do envelope.
-- O caminho não genérico guarda corpo somente para erro e faz a leitura de erro com `.Result`. O caminho genérico lê como texto ou binário conforme `T`; bytes/stream são lidos antes da checagem de status e não são copiados para `ErrorResponseData` em erro.
-- O evento de resposta não é observador universal: `ResponseDataReceived` só ocorre no caminho genérico. No caso de `byte[]` ou `Stream`, `ResponseEvent.Content` é nulo.
-- A resposta HTTP é descartada antes de retornar o envelope. Não dependa de `Response<Stream>.Data` permanecer acessível; o código não garante um stream aberto após o retorno.
-- `Duration` usa relógio de parede `DateTime.Now`; inclui envio/processamento e o evento de resposta do fluxo genérico. O evento `BeforeSend` acontece antes do início da medição.
+- O caminho não genérico legado de conveniência guarda corpo somente para erro e faz a leitura de erro com `.Result`. O caminho genérico lê como texto ou binário conforme `T`; bytes/stream são lidos antes da checagem de status e não são copiados para `ErrorResponseData` em erro.
+- O evento de resposta não é observador universal: `ResponseDataReceived` só ocorre no caminho genérico. No caso de `byte[]` ou `Stream`, `ResponseEvent.Content` é nulo; `DownloadAsync` também não emite esse evento.
+- A resposta HTTP é descartada antes de retornar os envelopes dos métodos de leitura existentes. Não dependa de `Response<Stream>.Data` permanecer acessível; `DownloadAsync` é distinto: copia para o destino recebido enquanto a resposta está aberta e não retorna o stream de origem.
+- `Duration` usa relógio de parede `DateTime.Now`; inclui envio/processamento e o evento de resposta do fluxo genérico, além da cópia em `DownloadAsync`. O evento `BeforeSend` acontece antes do início da medição.
+
+## `DownloadAsync`
+
+- `DownloadAsync(string endpoint, Stream destination, CancellationToken cancellationToken)` faz GET para um destino fornecido pelo consumidor. Endpoints absolutos ainda podem apontar a outro host, e um endpoint iniciado por `/` segue as regras usuais de resolução contra a base.
+- `endpoint == null` gera `ArgumentNullException` (`ParamName == "endpoint"`); destino nulo gera `ArgumentNullException` (`ParamName == "destination"`) e um destino sem escrita gera `ArgumentException` (`ParamName == "destination"`). São observadas como falhas da tarefa assíncrona. A validação precede URI e token pré-cancelado.
+- Envia com `ResponseHeadersRead` e copia em blocos usando buffer de cópia solicitado de 81.920 bytes. Isso não assegura uso absoluto de memória constante, pois handlers/conteúdos podem bufferizar e destinos em memória crescem com os dados. Não há garantias numéricas de memória ou throughput.
+- Para status HTTP malsucedido, não lê o corpo e não escreve no destino; `ErrorResponseData` é `null`. O consumidor pode chamar `EnsureSuccessStatusCode()` explicitamente.
+- O stream de destino continua sob ownership da aplicação. A cópia começa na posição atual e não descarrega, reposiciona, trunca ou descarta o destino. Erros de transporte, leitura/escrita ou cancelamento podem deixar conteúdo parcial; não há rollback e a biblioteca não fecha o `ClientApi`/`HttpClient` por causa da falha.
+- O token participa do envio e da cópia, mas `ReadAsStreamAsync()` não recebe token neste target. O runtime, handler e streams podem cooperar ou ignorar o cancelamento; timeout do `HttpClient` cobre a espera pelos headers, não é prazo total da cópia. Um token com prazo definido pela aplicação também não força implementações não cooperativas a parar.
 
 ## URL, parâmetros e headers
 
@@ -23,8 +32,8 @@ Registro dos comportamentos que podem ser fáceis de interpretar incorretamente 
 - `ClientApi` não implementa `IDisposable`; o wrapper não descarta explicitamente o cliente fornecido. O chamador mantém o ownership e o ciclo de vida.
 - Os métodos `SetHeader`/`SetAuthorization*` e `ConfigureHttpClient` operam sobre o cliente comum. Wrappers que compartilham a instância também compartilham os efeitos dessas alterações; os locks existentes não dão garantia geral de segurança entre threads.
 - A base explícita não é uma allowlist de hosts: endpoints absolutos podem direcionar requests a outra origem e não há guard de origem; headers padrão do cliente podem acompanhar esses requests. Não dependa da factory para isolar headers sensíveis.
-- O `CancellationToken` existe somente nos novos overloads `SendAsync`: a cooperação no envio e buffering depende do runtime, handler e `HttpContent` (implementações customizadas podem ignorá-lo); parsing e eventos síncronos posteriores não são interrompidos. O cancelamento por chamada não descarta o cliente compartilhado nem chama `CancelPendingRequests`.
-- `SendAsync` usa `ResponseContentRead`, que bufferiza o corpo em memória mesmo antes de tratar o sucesso não genérico. Considere o custo de respostas grandes e simultâneas; este caminho não promete streaming para downloads grandes.
+- O `CancellationToken` existe nos overloads `SendAsync` e em `DownloadAsync`. Em `SendAsync`, a cooperação no envio e buffering depende do runtime, handler e `HttpContent`; parsing e eventos síncronos posteriores não são interrompidos. O cancelamento por chamada não descarta o cliente compartilhado nem chama `CancelPendingRequests`.
+- `SendAsync` usa `ResponseContentRead`, que bufferiza o corpo em memória mesmo antes de tratar o sucesso não genérico. `DownloadAsync` usa `ResponseHeadersRead` e copia para stream externo; são fluxos distintos, e o primeiro não passa a transmitir o corpo para o segundo automaticamente.
 
 ## Serialização
 
@@ -44,9 +53,10 @@ O programa em `tests/Vip.RestClient.Demo/` é uma demonstração HTTP interativa
 
 ## Recomendações (não são comportamento atual)
 
-- Ao integrar com serviços reais, trate streams retornados como potencialmente indisponíveis após a conclusão da chamada; prefira um fluxo de consumo cujo ciclo de vida esteja sob controle da aplicação.
+- Ao integrar com serviços reais, trate `Response<Stream>.Data` dos métodos existentes como potencialmente indisponível após a chamada; para copiar uma resposta a um destino externo, considere `DownloadAsync` e mantenha esse destino sob controle da aplicação.
+- Para proteger um arquivo anterior contra falha ou cancelamento, considere baixar em caminho temporário exclusivo, limpá-lo em caso de falha e só promovê-lo após sucesso. Evite `FileMode.Create` no caminho final antes da chamada, pois trunca o arquivo; a biblioteca não implementa rollback nem garante atomicidade de movimentação.
 - Revise query strings pré-existentes, nomes de chaves e valores nulos antes de usar `Helper` em dados não triviais.
 - Valide JWT com uma implementação apropriada para o contrato de segurança da aplicação; não use a decodificação deste projeto como autenticação/autorização.
-- Ao ampliar o cancelamento cooperativo de `SendAsync` ou o gerenciamento de ciclo de vida, acrescente testes para esses limites sem tratar a caracterização como correção automática do comportamento legado.
+- Ao ampliar o cancelamento cooperativo de `SendAsync`/`DownloadAsync` ou o gerenciamento de ciclo de vida, acrescente testes para esses limites sem tratar a caracterização como correção automática do comportamento legado.
 
 Esses itens são sugestões de cautela, não declarações de que a biblioteca valide tokens ou gerencie o ciclo de vida do cliente externo.

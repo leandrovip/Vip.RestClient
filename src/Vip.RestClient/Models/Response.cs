@@ -78,6 +78,21 @@ public class Response
         };
     }
 
+    internal static Response BuildMetadata(HttpResponseMessage response, DateTime start)
+    {
+        return new Response
+        {
+            Headers = response.Headers,
+            ContentHeaders = response.Content.Headers,
+            RequestMessage = response.RequestMessage,
+            IsSuccessStatusCode = response.IsSuccessStatusCode,
+            ReasonPhrase = response.ReasonPhrase,
+            StatusCode = response.StatusCode,
+            ErrorResponseData = null,
+            Duration = DateTime.Now - start,
+        };
+    }
+
     #endregion
 }
 

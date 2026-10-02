@@ -15,6 +15,7 @@ O projeto também inclui extensões para IDs e consultas GET, envios JSON, campo
 ## Recursos
 
 - Chamadas assíncronas para GET, POST, PUT, PATCH, DELETE e OPTIONS.
+- Download de resposta GET copiado em blocos para um `Stream` gravável fornecido pelo consumidor.
 - Respostas com metadados HTTP e, na forma genérica, dados desserializados; há suporte a leitura de texto e bytes.
 - Serialização JSON UTF-8 para objetos enviados por POST, PUT e PATCH.
 - Extensões para query e IDs `int`/`Guid`, com disponibilidade diferente conforme o verbo e a forma genérica.
@@ -144,7 +145,8 @@ O request (incluindo `Content`) é preparado e descartado pelo chamador; o `Http
 | PATCH | Com ou sem objeto: `Response` ou `Response<T>` | Extensões de ID com objeto existem em formas genérica e não genérica. |
 | DELETE | `Response` ou `Response<T>` | Extensões de ID existem em formas genérica e não genérica. |
 | OPTIONS | Somente `Response` | Recebe propriedades de objeto, sequência de tuplas ou sequência de pares como headers. |
-| Request preparada | `SendAsync(request, cancellationToken)` → `Task<Response>`; `SendAsync<T>(...)` → `Task<Response<T>>` | Únicos overloads com token por chamada; recebem request e conteúdo preparados pelo consumidor. |
+| Request preparada | `SendAsync(request, cancellationToken)` → `Task<Response>`; `SendAsync<T>(...)` → `Task<Response<T>>` | Recebem request e conteúdo preparados pelo consumidor; os métodos de conveniência por verbo não têm token. |
+| Download em stream | `DownloadAsync(endpoint, destination, cancellationToken)` → `Task<Response>` | Copia GET bem-sucedido para o stream fornecido; resposta HTTP malsucedida retorna metadados sem copiar o corpo. |
 | POST de formulário | `Response<T>` | Extensões genéricas para campos multipart ou URL-encoded. |
 
 A tabela é um resumo, não uma lista de todas as assinaturas; o [catálogo de arquitetura](docs/arquitetura.md) informa os overloads e tipos aceitos.
@@ -187,16 +189,31 @@ Response<Item> response = await client.GetAsync<Item>("items/42");
 
 `ConfigureHttpClient` permite configurar o `HttpClient` interno, inclusive timeout. `BeforeSend` recebe a mensagem antes do envio. `ResponseDataReceived` observa somente respostas do fluxo genérico, após a leitura e antes do parsing final; para tipos binários seu campo `Content` é nulo. Evite registrar corpos de resposta ou outros dados sensíveis em eventos.
 
+### Baixar para um stream fornecido pelo consumidor
+
+`DownloadAsync` envia um GET e copia o corpo de sucesso para um `Stream` gravável recebido da aplicação, sem retornar um stream associado à resposta HTTP. Trecho dentro de um método assíncrono que recebe `HttpClient suppliedClient`, `Stream destination` e `CancellationToken cancellationToken`:
+
+```csharp
+var api = ClientApi.FromHttpClient("https://api.example.com/", suppliedClient);
+Response response = await api.DownloadAsync(
+    "files/example", destination, cancellationToken);
+response.EnsureSuccessStatusCode();
+```
+
+O trecho é ilustrativo e não deve ser executado. A aplicação mantém ownership do `HttpClient` e do destino. Em status malsucedido, o método retorna metadados sem ler o corpo de erro nem escrever no destino; `EnsureSuccessStatusCode()` pode lançar. Falhas durante a cópia podem deixar dados parciais, sem rollback. Para preservar um arquivo anterior, a aplicação pode usar um temporário exclusivo, limpá-lo em falhas e promovê-lo somente após sucesso; a movimentação não tem garantia geral de atomicidade.
+
+O novo fluxo usa leitura de headers e copia o corpo com buffer de 81.920 bytes solicitado ao stream. Isso evita o buffer integral feito pelo `SendAsync` para requests preparados, mas não promete memória constante em qualquer handler/destino, taxa de transferência ou interrupção imediata em todo runtime. Mais detalhes sobre cancelamento e limites estão em [Arquitetura](docs/arquitetura.md) e [Particularidades](docs/particularidades.md).
+
 ## Tratamento de erros
 
-Verifique `IsSuccessStatusCode` em `Response` ou `Response<T>`. Para status HTTP malsucedido nos fluxos de leitura textual, o corpo fica em `ErrorResponseData`. Nos retornos `byte[]` e `Stream`, o conteúdo é lido antes da verificação do status e pode estar em `Data` mesmo em erro; `ErrorResponseData` permanece nulo. Também é possível chamar `EnsureSuccessStatusCode()` para lançar `UnsuccessfulStatusCodeException` explicitamente. A forma genérica `EnsureSuccessStatusCode<TError>()` tenta desserializar os dados de erro para o tipo indicado e lança a exceção genérica; se a conversão falhar, a informação tipada fica com o valor padrão.
+Verifique `IsSuccessStatusCode` em `Response` ou `Response<T>`. Para status HTTP malsucedido nos fluxos de leitura textual, o corpo fica em `ErrorResponseData`. Nos retornos `byte[]` e `Stream` dos métodos genéricos existentes, o conteúdo é lido antes da verificação do status e pode estar em `Data` mesmo em erro; `ErrorResponseData` permanece nulo. `DownloadAsync` é diferente: em status malsucedido, não lê o corpo nem escreve no destino, e `ErrorResponseData` é nulo. Também é possível chamar `EnsureSuccessStatusCode()` para lançar `UnsuccessfulStatusCodeException` explicitamente. A forma genérica `EnsureSuccessStatusCode<TError>()` tenta desserializar os dados de erro para o tipo indicado e lança a exceção genérica; se a conversão falhar, a informação tipada fica com o valor padrão.
 
 No fluxo não genérico legado de conveniência, o corpo de sucesso não é lido nem guardado. `SendAsync(request, cancellationToken)` também retorna `Response`, mas bufferiza o corpo antes de construir o envelope e não expõe o corpo de sucesso. No genérico, o valor de `Data` depende do tipo solicitado: `string` recebe texto, `byte[]` recebe bytes e outros tipos são desserializados no sucesso. Falhas de transporte, buffering, handlers de eventos ou parsing também podem lançar antes de um envelope ser retornado.
 
 ## Limitações importantes
 
-- Os métodos de conveniência por verbo não recebem `CancellationToken`; apenas os overloads `SendAsync` aceitam token por chamada. `ClientApi` não implementa `IDisposable` e não fornece política própria de retry ou renovação de token. O `HttpClient` passado à factory continua sob responsabilidade do chamador.
-- `Response<T>.Data` de tipo `Stream` não deve ser presumido utilizável após o retorno: a resposta HTTP é descartada antes que o envelope seja devolvido.
+- Os métodos de conveniência por verbo não recebem `CancellationToken`; os overloads `SendAsync` e `DownloadAsync` aceitam token por chamada. `ClientApi` não implementa `IDisposable` e não fornece política própria de retry ou renovação de token. O `HttpClient` passado à factory continua sob responsabilidade do chamador.
+- `Response<T>.Data` de tipo `Stream` nos métodos de leitura existentes não deve ser presumido utilizável após o retorno: a resposta HTTP é descartada antes que o envelope seja devolvido. `DownloadAsync` é distinto: copia para um stream fornecido pela aplicação enquanto a resposta está aberta e não retorna o stream de origem.
 - `ResponseDataReceived` não é chamado no caminho não genérico; no fluxo genérico, `Content` é nulo para `byte[]` e `Stream`.
 - As configurações JSON fornecidas ao construtor valem apenas para serialização de saída.
 - JWT é apenas decodificado e analisado; não há validação de assinatura, expiração, issuer ou audience. Não use essa decodificação como validação de autenticação/autorização.
@@ -224,9 +241,9 @@ dotnet build ./src/Vip.RestClient.sln --configuration Release --no-restore
 dotnet test ./tests/Vip.RestClient.Tests/Vip.RestClient.Tests.csproj --configuration Release
 ```
 
-O comando `dotnet test` deve apontar explicitamente para o projeto `.Tests`; a suíte usa handler HTTP falso para testar sem rede. Seus testes de caracterização registram comportamentos legados, não os corrigem.
+O comando `dotnet test` deve apontar explicitamente para o projeto `.Tests`; a suíte usa handler HTTP falso e não depende de rede. Os testes de caracterização registram comportamentos legados sem corrigi-los e também exercitam a API de download.
 
-Validação integrada em Windows com SDK .NET `10.0.401` (2026-10-01): restore/build sem avisos nem erros; suíte final com 82 aprovados, 0 falhos e 0 ignorados (70 anteriores + 12 novos). Linux e projetos consumidores reais não foram validados; demonstração e empacotamento não foram executados. Veja [Desenvolvimento](docs/desenvolvimento.md) para os limites do snapshot de API.
+Validação integrada anterior, em Windows com SDK .NET `10.0.401` (2026-10-01): restore/build sem avisos nem erros; suíte com 82 aprovados, 0 falhos e 0 ignorados (70 anteriores + 12 novos). Essa etapa antecede `DownloadAsync`. Na validação integrada de 2026-10-02, no mesmo SDK e ambiente, restore/build terminaram sem avisos nem erros; a suíte teve 91 aprovados, 0 falhos e 0 ignorados (82 anteriores + 9 novos). Linux e projetos consumidores reais não foram validados; demonstração, downloads HTTP reais, empacotamento e publicação não foram executados. Veja [Desenvolvimento](docs/desenvolvimento.md) para os limites do snapshot de API.
 
 `tests/Vip.RestClient.Demo` é uma demonstração manual, não uma suíte de testes. Ela faz requisições HTTP reais ao httpbin e aguarda `Console.ReadKey()`. **Não execute como validação automática.** Seu target é `net9.0-windows`; isso não altera o target da biblioteca.
 

@@ -237,6 +237,28 @@ namespace Vip.RestClient
 
         #region Public Methods
 
+        public async Task<Response> DownloadAsync(string endpoint, Stream destination, CancellationToken cancellationToken)
+        {
+            if (endpoint == null) throw new ArgumentNullException(nameof(endpoint));
+            if (destination == null) throw new ArgumentNullException(nameof(destination));
+            if (!destination.CanWrite) throw new ArgumentException("The destination stream must be writable.", nameof(destination));
+
+            var uri = new Uri(BaseUri, endpoint);
+            using var request = new HttpRequestMessage(HttpMethod.Get, uri);
+            cancellationToken.ThrowIfCancellationRequested();
+
+            BeforeSend?.Invoke(this, request);
+            var start = DateTime.Now;
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, cancellationToken);
+            if (response.IsSuccessStatusCode)
+            {
+                var source = await response.Content.ReadAsStreamAsync();
+                await source.CopyToAsync(destination, 81920, cancellationToken);
+            }
+
+            return Response.BuildMetadata(response, start);
+        }
+
         public async Task<Response> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         {
             if (request == null) throw new ArgumentNullException(nameof(request));

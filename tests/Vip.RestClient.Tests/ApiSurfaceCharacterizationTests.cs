@@ -16,10 +16,12 @@ public class ApiSurfaceCharacterizationTests
         const string factory = "M public static Vip.RestClient.ClientApi FromHttpClient(System.String baseUrl,System.Net.Http.HttpClient httpClient,Newtonsoft.Json.JsonSerializerSettings jsonSerializerSettings=null)";
         const string send = "M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> SendAsync(System.Net.Http.HttpRequestMessage request,System.Threading.CancellationToken cancellationToken)";
         const string sendTyped = "M public instance System.Threading.Tasks.Task<Vip.RestClient.Response<T>> SendAsync<T>(System.Net.Http.HttpRequestMessage request,System.Threading.CancellationToken cancellationToken)";
+        const string download = "M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> DownloadAsync(System.String endpoint,System.IO.Stream destination,System.Threading.CancellationToken cancellationToken)";
 
         Assert.Single(actual, line => line == factory);
         Assert.Single(actual, line => line == send);
         Assert.Single(actual, line => line == sendTyped);
-        Assert.Equal(expected, actual.Where(line => line != factory && line != send && line != sendTyped));
+        Assert.Single(actual, line => line == download);
+        Assert.Equal(expected, actual.Where(line => line != factory && line != send && line != sendTyped && line != download));
     }
 }
