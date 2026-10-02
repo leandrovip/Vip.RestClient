@@ -23,6 +23,8 @@ Registro dos comportamentos que podem ser fáceis de interpretar incorretamente 
 - `ClientApi` não implementa `IDisposable`; o wrapper não descarta explicitamente o cliente fornecido. O chamador mantém o ownership e o ciclo de vida.
 - Os métodos `SetHeader`/`SetAuthorization*` e `ConfigureHttpClient` operam sobre o cliente comum. Wrappers que compartilham a instância também compartilham os efeitos dessas alterações; os locks existentes não dão garantia geral de segurança entre threads.
 - A base explícita não é uma allowlist de hosts: endpoints absolutos podem direcionar requests a outra origem e não há guard de origem; headers padrão do cliente podem acompanhar esses requests. Não dependa da factory para isolar headers sensíveis.
+- O `CancellationToken` existe somente nos novos overloads `SendAsync`: a cooperação no envio e buffering depende do runtime, handler e `HttpContent` (implementações customizadas podem ignorá-lo); parsing e eventos síncronos posteriores não são interrompidos. O cancelamento por chamada não descarta o cliente compartilhado nem chama `CancelPendingRequests`.
+- `SendAsync` usa `ResponseContentRead`, que bufferiza o corpo em memória mesmo antes de tratar o sucesso não genérico. Considere o custo de respostas grandes e simultâneas; este caminho não promete streaming para downloads grandes.
 
 ## Serialização
 
@@ -45,6 +47,6 @@ O programa em `tests/Vip.RestClient.Demo/` é uma demonstração HTTP interativa
 - Ao integrar com serviços reais, trate streams retornados como potencialmente indisponíveis após a conclusão da chamada; prefira um fluxo de consumo cujo ciclo de vida esteja sob controle da aplicação.
 - Revise query strings pré-existentes, nomes de chaves e valores nulos antes de usar `Helper` em dados não triviais.
 - Valide JWT com uma implementação apropriada para o contrato de segurança da aplicação; não use a decodificação deste projeto como autenticação/autorização.
-- Em mudanças futuras, avalie cenários de cancelamento e ciclo de vida/disposição do cliente; acrescente testes à suíte automatizada para os comportamentos pertinentes, sem tratá-los como correções do comportamento legado por si só.
+- Ao ampliar o cancelamento cooperativo de `SendAsync` ou o gerenciamento de ciclo de vida, acrescente testes para esses limites sem tratar a caracterização como correção automática do comportamento legado.
 
-Esses itens são sugestões de cautela, não declarações de que a biblioteca já forneça validação, cancelamento ou gerenciamento de cliente.
+Esses itens são sugestões de cautela, não declarações de que a biblioteca valide tokens ou gerencie o ciclo de vida do cliente externo.

@@ -5,6 +5,7 @@ using System.Linq;
 using System.Net;
 using System.Net.Http;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 
@@ -235,6 +236,36 @@ namespace Vip.RestClient
         #endregion
 
         #region Public Methods
+
+        public async Task<Response> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request == null) throw new ArgumentNullException(nameof(request));
+            if (request.RequestUri == null) throw new ArgumentException("The request must have a request URI.", nameof(request));
+
+            var uri = new Uri(BaseUri, request.RequestUri);
+            request.RequestUri = uri;
+            cancellationToken.ThrowIfCancellationRequested();
+
+            BeforeSend?.Invoke(this, request);
+            var start = DateTime.Now;
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
+            return Response.Build(response, start);
+        }
+
+        public async Task<Response<T>> SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)
+        {
+            if (request == null) throw new ArgumentNullException(nameof(request));
+            if (request.RequestUri == null) throw new ArgumentException("The request must have a request URI.", nameof(request));
+
+            var uri = new Uri(BaseUri, request.RequestUri);
+            request.RequestUri = uri;
+            cancellationToken.ThrowIfCancellationRequested();
+
+            BeforeSend?.Invoke(this, request);
+            var start = DateTime.Now;
+            using var response = await _httpClient.SendAsync(request, HttpCompletionOption.ResponseContentRead, cancellationToken);
+            return await GetResponseAsync<T>(uri, response, start);
+        }
 
         public void ConfigureHttpClient(Action<HttpClient> client) => client(_httpClient);
 

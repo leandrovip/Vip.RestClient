@@ -44,9 +44,9 @@ O destino padrão do pacote é `src/Vip.RestClient/bin/Release`. `src/nuget.conf
 
 ### Validação registrada
 
-Em 2026-10-01, em Windows com SDK .NET `10.0.401`, `dotnet restore ./src/Vip.RestClient.sln` e `dotnet build ./src/Vip.RestClient.sln --configuration Release --no-restore` foram concluídos sem avisos nem erros. Após a integração de `FromHttpClient`, `dotnet test ./tests/Vip.RestClient.Tests/Vip.RestClient.Tests.csproj --configuration Release --no-build --no-restore` terminou com **70 aprovados, 0 falhos e 0 ignorados** (57 existentes e 13 novos).
+Em 2026-10-01, em Windows com SDK .NET `10.0.401`, `dotnet restore ./src/Vip.RestClient.sln` e `dotnet build ./src/Vip.RestClient.sln --configuration Release --no-restore` foram concluídos sem avisos nem erros. Após a inclusão dos overloads `SendAsync`, `dotnet test ./tests/Vip.RestClient.Tests/Vip.RestClient.Tests.csproj --configuration Release --no-build --no-restore` terminou com **82 aprovados, 0 falhos e 0 ignorados** (70 anteriores + 12 novos).
 
-O teste de superfície preservou a baseline versionada (117 linhas) e verifica separadamente a assinatura aprovada de `FromHttpClient`, além dos tipos/membros visíveis, defaults opcionais e constraints genéricas registrados. Esse snapshot não é garantia completa de compatibilidade binária; projetos consumidores reais não foram compilados. Linux não foi validado; a demonstração, build isolado da biblioteca, `dotnet pack` e publicação não foram executados.
+O snapshot versionado de 117 linhas permanece dedicado à superfície preexistente; as verificações de API aceitam explicitamente `FromHttpClient` e os dois overloads `SendAsync`. A comparação registra tipos/membros visíveis, defaults opcionais e constraints genéricas, mas não é garantia completa de compatibilidade binária; projetos consumidores reais não foram compilados. A caracterização de cancelamento foi exercitada em .NET 9, não em .NET Framework. Linux não foi validado; a demonstração, build isolado da biblioteca, `dotnet pack` e publicação não foram executados.
 
 ## Demonstração manual (não é teste automatizado)
 

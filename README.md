@@ -21,6 +21,7 @@ O projeto também inclui extensões para IDs e consultas GET, envios JSON, campo
 - POST de formulário `multipart/form-data` e `application/x-www-form-urlencoded` para campos textuais.
 - Headers padrão configuráveis, incluindo métodos auxiliares para `Authorization`.
 - Eventos `BeforeSend` e `ResponseDataReceived` (este último apenas no fluxo genérico).
+- Envio de `HttpRequestMessage` preparado pelo consumidor, com token de cancelamento por chamada em `SendAsync`.
 - Tipos utilitários para decodificar a estrutura de JWT; **não validam tokens**.
 
 Esses recursos descrevem a implementação atual, não uma promessa de compatibilidade com todas as combinações de overloads. Por exemplo, não existe overload de HEAD e os métodos de IDs não são simétricos entre os verbos. O [catálogo de API](docs/arquitetura.md) e a [documentação de uso](docs/uso.md) mostram as diferenças.
@@ -108,6 +109,31 @@ public static class SharedClientExample
 
 O exemplo não deve ser executado. O consumidor mantém a responsabilidade pelo ciclo de vida e pela configuração desse `HttpClient`. A factory usa o `baseUrl` explícito; não infere a base de `HttpClient.BaseAddress`, nem altera timeout, headers padrão ou descompressão. Ela não configura nem registra integração de DI ou de factory de clientes.
 
+### Enviar uma request preparada com cancelamento
+
+Os overloads públicos são `Task<Response> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)` e `Task<Response<T>> SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)`. O token é obrigatório; passe `CancellationToken.None` para não solicitar cancelamento nessa chamada. Dentro de um método assíncrono (com `Item` do exemplo inicial):
+
+```csharp
+using System.Net.Http;
+using System.Threading;
+using System.Threading.Tasks;
+using Vip.RestClient;
+
+public static class CancelableRequestExample
+{
+    public static async Task<Item> ReadAsync(HttpClient httpClient, CancellationToken cancellationToken)
+    {
+        var api = ClientApi.FromHttpClient("https://api.example.com/", httpClient);
+        using var request = new HttpRequestMessage(HttpMethod.Get, "items/42");
+        Response<Item> response = await api.SendAsync<Item>(request, cancellationToken);
+        response.EnsureSuccessStatusCode();
+        return response.Data;
+    }
+}
+```
+
+O request (incluindo `Content`) é preparado e descartado pelo chamador; o `HttpClient` recebido também continua sob ownership da aplicação. O conteúdo segue diretamente, sem serialização automática pelo `JsonSerializerSettings`. O novo envio bufferiza o corpo antes do parsing; detalhes de URI, cooperação do cancelamento e consumo de memória estão em [Arquitetura](docs/arquitetura.md).
+
 ## Operações e formas de resposta
 
 | Operação | Sobrecargas principais | Observações |
@@ -118,6 +144,7 @@ O exemplo não deve ser executado. O consumidor mantém a responsabilidade pelo 
 | PATCH | Com ou sem objeto: `Response` ou `Response<T>` | Extensões de ID com objeto existem em formas genérica e não genérica. |
 | DELETE | `Response` ou `Response<T>` | Extensões de ID existem em formas genérica e não genérica. |
 | OPTIONS | Somente `Response` | Recebe propriedades de objeto, sequência de tuplas ou sequência de pares como headers. |
+| Request preparada | `SendAsync(request, cancellationToken)` → `Task<Response>`; `SendAsync<T>(...)` → `Task<Response<T>>` | Únicos overloads com token por chamada; recebem request e conteúdo preparados pelo consumidor. |
 | POST de formulário | `Response<T>` | Extensões genéricas para campos multipart ou URL-encoded. |
 
 A tabela é um resumo, não uma lista de todas as assinaturas; o [catálogo de arquitetura](docs/arquitetura.md) informa os overloads e tipos aceitos.
@@ -164,11 +191,11 @@ Response<Item> response = await client.GetAsync<Item>("items/42");
 
 Verifique `IsSuccessStatusCode` em `Response` ou `Response<T>`. Para status HTTP malsucedido nos fluxos de leitura textual, o corpo fica em `ErrorResponseData`. Nos retornos `byte[]` e `Stream`, o conteúdo é lido antes da verificação do status e pode estar em `Data` mesmo em erro; `ErrorResponseData` permanece nulo. Também é possível chamar `EnsureSuccessStatusCode()` para lançar `UnsuccessfulStatusCodeException` explicitamente. A forma genérica `EnsureSuccessStatusCode<TError>()` tenta desserializar os dados de erro para o tipo indicado e lança a exceção genérica; se a conversão falhar, a informação tipada fica com o valor padrão.
 
-O fluxo não genérico não lê nem guarda corpo em caso de sucesso. No genérico, o valor de `Data` depende do tipo solicitado: `string` recebe texto, `byte[]` recebe bytes e outros tipos são desserializados no sucesso. Falhas de transporte, handlers de eventos ou parsing também podem lançar antes de um envelope ser retornado.
+No fluxo não genérico legado de conveniência, o corpo de sucesso não é lido nem guardado. `SendAsync(request, cancellationToken)` também retorna `Response`, mas bufferiza o corpo antes de construir o envelope e não expõe o corpo de sucesso. No genérico, o valor de `Data` depende do tipo solicitado: `string` recebe texto, `byte[]` recebe bytes e outros tipos são desserializados no sucesso. Falhas de transporte, buffering, handlers de eventos ou parsing também podem lançar antes de um envelope ser retornado.
 
 ## Limitações importantes
 
-- Os métodos não recebem `CancellationToken`; `ClientApi` não implementa `IDisposable` e não fornece política própria de retry ou renovação de token. O `HttpClient` passado à factory continua sob responsabilidade do chamador.
+- Os métodos de conveniência por verbo não recebem `CancellationToken`; apenas os overloads `SendAsync` aceitam token por chamada. `ClientApi` não implementa `IDisposable` e não fornece política própria de retry ou renovação de token. O `HttpClient` passado à factory continua sob responsabilidade do chamador.
 - `Response<T>.Data` de tipo `Stream` não deve ser presumido utilizável após o retorno: a resposta HTTP é descartada antes que o envelope seja devolvido.
 - `ResponseDataReceived` não é chamado no caminho não genérico; no fluxo genérico, `Content` é nulo para `byte[]` e `Stream`.
 - As configurações JSON fornecidas ao construtor valem apenas para serialização de saída.
@@ -199,7 +226,7 @@ dotnet test ./tests/Vip.RestClient.Tests/Vip.RestClient.Tests.csproj --configura
 
 O comando `dotnet test` deve apontar explicitamente para o projeto `.Tests`; a suíte usa handler HTTP falso para testar sem rede. Seus testes de caracterização registram comportamentos legados, não os corrigem.
 
-Validação integrada em Windows com SDK .NET `10.0.401` (2026-10-01): restore/build da solução sem avisos nem erros; suíte final com 70 aprovados, 0 falhos e 0 ignorados (57 existentes + 13 novos). Linux e projetos consumidores reais não foram validados; demonstração e empacotamento não foram executados. Veja [Desenvolvimento](docs/desenvolvimento.md) para o escopo do snapshot de API.
+Validação integrada em Windows com SDK .NET `10.0.401` (2026-10-01): restore/build sem avisos nem erros; suíte final com 82 aprovados, 0 falhos e 0 ignorados (70 anteriores + 12 novos). Linux e projetos consumidores reais não foram validados; demonstração e empacotamento não foram executados. Veja [Desenvolvimento](docs/desenvolvimento.md) para os limites do snapshot de API.
 
 `tests/Vip.RestClient.Demo` é uma demonstração manual, não uma suíte de testes. Ela faz requisições HTTP reais ao httpbin e aguarda `Console.ReadKey()`. **Não execute como validação automática.** Seu target é `net9.0-windows`; isso não altera o target da biblioteca.
 

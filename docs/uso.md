@@ -60,6 +60,12 @@ public static class ExternalClientExample
 
 O chamador permanece responsável pelo ciclo de vida e pela configuração da instância. A factory não usa `HttpClient.BaseAddress`, não altera timeout, headers padrão nem descompressão, e não registra integração com DI ou com uma factory de clientes. Se a aplicação usa uma estratégia própria de factory, ela pode passar a instância que gerencia.
 
+## Enviar uma request preparada com cancelamento
+
+`ClientApi` também oferece `SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)` e `SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)`, que retornam `Task<Response>` e `Task<Response<T>>`. São os únicos métodos com token por chamada; as sobrecargas de conveniência por verbo e suas extensões continuam sem `CancellationToken`.
+
+O consumidor prepara a mensagem e seu `HttpContent`, aguarda o envio e mantém ownership para descartá-los (por exemplo, com `using`). O conteúdo segue diretamente, sem serialização JSON automática nem uso das `JsonSerializerSettings` do cliente. URI relativa da mensagem é resolvida contra `BaseUri` explícita; URI absoluta continua podendo substituir a base. O token é obrigatório; use `CancellationToken.None` quando não houver cancelamento a solicitar. Consulte [Arquitetura](arquitetura.md) para ordem de validação/eventos, buffering e limites da cooperação do token.
+
 ## JSON de saída e status
 
 Objetos passados aos overloads de POST/PUT/PATCH são serializados como JSON UTF-8. `JsonSerializerSettings` opcionais, recebidas pelo construtor legado ou por `FromHttpClient`, afetam essa serialização de saída, não o parsing de resposta:
@@ -144,4 +150,4 @@ Quando o `HttpClient` fornecido é compartilhado, os métodos de headers padrão
 
 ## Limitações relevantes
 
-`ClientApi` não implementa `IDisposable` nem aceita `CancellationToken` nos métodos. Falhas de transporte e de parsing podem lançar. `Response<T>.Data` de tipo `Stream` não deve ser presumido utilizável após o retorno, pois a resposta HTTP é descartada. JWT é decodificado, mas não validado. Leia [Arquitetura](arquitetura.md) e [Particularidades](particularidades.md) antes de depender desses comportamentos.
+`ClientApi` não implementa `IDisposable`. Somente os novos overloads `SendAsync` recebem `CancellationToken`; os métodos de conveniência por verbo e suas extensões continuam sem token. Falhas de transporte e de parsing podem lançar. `Response<T>.Data` de tipo `Stream` não deve ser presumido utilizável após o retorno, pois a resposta HTTP é descartada. JWT é decodificado, mas não validado. Leia [Arquitetura](arquitetura.md) e [Particularidades](particularidades.md) antes de depender desses comportamentos.
