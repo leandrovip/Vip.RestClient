@@ -2,9 +2,9 @@
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Serialization;
-using Vip.RestClient.Test.Models;
+using Vip.RestClient.Demo.Models;
 
-namespace Vip.RestClient.Test;
+namespace Vip.RestClient.Demo;
 
 public class ClientTests
 {
