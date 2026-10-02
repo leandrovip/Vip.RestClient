@@ -1,4 +1,4 @@
-﻿namespace Vip.RestClient.Test.Models;
+﻿namespace Vip.RestClient.Demo.Models;
 
 public class User
 {

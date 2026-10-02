@@ -1,0 +1,117 @@
+T public class Vip.RestClient.ApiException : System.Exception,System.Runtime.Serialization.ISerializable
+P public instance System.Uri Resource {get:public;}
+P public instance System.Net.Http.HttpResponseMessage Response {get:public;}
+P public instance System.Net.HttpStatusCode StatusCode {get:public;}
+T public class Vip.RestClient.ClientApi : System.Object
+C public (System.String baseUrl,System.Net.Http.HttpClientHandler clientHandler=null,Newtonsoft.Json.JsonSerializerSettings jsonSerializerSettings=null)
+F public instance readonly System.Uri BaseUri
+E public System.EventHandler<System.Net.Http.HttpRequestMessage> BeforeSend {add:public;remove:public;}
+E public System.EventHandler<Vip.RestClient.ResponseEvent> ResponseDataReceived {add:public;remove:public;}
+M public instance System.Void ConfigureHttpClient(System.Action<System.Net.Http.HttpClient> client)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> DeleteAsync(System.String endpoint)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response<T>> DeleteAsync<T>(System.String endpoint)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> GetAsync(System.String endpoint)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response<T>> GetAsync<T>(System.String endpoint)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> OptionsAsync(System.String endpoint,System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<System.String,System.String>> headers)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> OptionsAsync(System.String endpoint,System.Collections.Generic.IEnumerable<System.ValueTuple<System.String,System.String>> headers)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> OptionsAsync(System.String endpoint,System.Object value)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> PatchAsync(System.String endpoint)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> PatchAsync(System.String endpoint,System.Object value)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response<T>> PatchAsync<T>(System.String endpoint)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response<T>> PatchAsync<T>(System.String endpoint,System.Object value)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> PostAsync(System.String endpoint)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> PostAsync(System.String endpoint,System.Object value)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response<T>> PostAsync<T>(System.String endpoint,System.Net.Http.HttpContent content)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response<T>> PostAsync<T>(System.String endpoint,System.Object value)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response> PutAsync(System.String endpoint,System.Object value)
+M public instance System.Threading.Tasks.Task<Vip.RestClient.Response<T>> PutAsync<T>(System.String endpoint,System.Object value)
+M public instance System.Void RemoveAuthorization()
+M public instance System.Void SetAuthorizationBearer(System.String token)
+M public instance System.Void SetAuthorization(System.String auth)
+M public instance System.Void SetHeader(System.String key,System.String value)
+T public class Vip.RestClient.Helper : System.Object
+M public static System.String BuildUrlEncodedUrl(System.String service,System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<System.String,System.String>> values)
+M public static System.String BuildUrlEncodedUrl(System.String service,System.Object p)
+T public class Vip.RestClient.Jwt : Vip.RestClient.JwtBase
+C public ()
+P public instance Vip.RestClient.JwtGeneric Content {get:public;}
+M public static Vip.RestClient.Jwt Parse(System.String token)
+T public class Vip.RestClient.JwtBase : System.Object
+C protected ()
+P public instance System.String Header {get:public;set:protected;}
+P public instance System.String OriginalToken {get:public;set:protected;}
+P public instance System.String Payload {get:public;set:protected;}
+P public instance System.Byte[] Signature {get:public;set:protected;}
+M public static Vip.RestClient.JwtBase ParseText(System.String token)
+T public class Vip.RestClient.JwtGeneric : System.Object
+C public ()
+P public instance System.String Audience {get:public;set:public;}
+P public instance System.Int64 ExpirationTime {get:public;set:public;}
+P public instance System.String Issuer {get:public;set:public;}
+P public instance System.Int64 IssuerAt {get:public;set:public;}
+P public instance System.Int64 NotBefore {get:public;set:public;}
+P public instance System.String Subject {get:public;set:public;}
+T public class Vip.RestClient.Jwt<T> : Vip.RestClient.JwtBase
+C public ()
+P public instance T Content {get:public;}
+M public static Vip.RestClient.Jwt<T> Parse(System.String token)
+T public class Vip.RestClient.Response : System.Object
+C public ()
+P public instance System.Net.Http.Headers.HttpContentHeaders ContentHeaders {get:public;set:protected;}
+P public instance System.TimeSpan Duration {get:public;set:protected;}
+P public instance System.String ErrorResponseData {get:public;set:protected;}
+P public instance System.Net.Http.Headers.HttpResponseHeaders Headers {get:public;set:protected;}
+P public instance System.Boolean IsSuccessStatusCode {get:public;set:protected;}
+P public instance System.String ReasonPhrase {get:public;set:protected;}
+P public instance System.Net.Http.HttpRequestMessage RequestMessage {get:public;set:protected;}
+P public instance System.Net.HttpStatusCode StatusCode {get:public;set:protected;}
+M public static Vip.RestClient.Response Build(System.Net.Http.HttpResponseMessage response,System.DateTime start)
+M public instance System.Void EnsureSuccessStatusCode()
+M public instance System.Void EnsureSuccessStatusCode<TError>() where TError : class
+M public instance T ParseErrorResponseData<T>()
+M public instance System.Boolean TryParseErrorResponseData<TError>(out TError& err)
+T public class Vip.RestClient.ResponseEvent : System.Object
+C public ()
+P public instance System.String Content {get:public;set:public;}
+P public instance System.DateTime Received {get:public;set:public;}
+P public instance System.Int32 StatusCode {get:public;set:public;}
+P public instance System.Boolean Success {get:public;set:public;}
+P public instance System.Uri Uri {get:public;set:public;}
+M public instance virtual System.String ToString()
+T public class Vip.RestClient.Response<T> : Vip.RestClient.Response
+C public ()
+P public instance T Data {get:public;}
+M public static Vip.RestClient.Response<T> Build(System.Net.Http.HttpResponseMessage response,System.Net.Http.Headers.HttpContentHeaders headers,T data,System.String errorData,System.DateTime start)
+T public class Vip.RestClient.RestExtensions extension : System.Object
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response> DeleteAsync(Vip.RestClient.ClientApi client,System.String endpoint,System.Guid id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response> DeleteAsync(Vip.RestClient.ClientApi client,System.String endpoint,System.Int32 id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> DeleteAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Guid id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> DeleteAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Int32 id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> FormUrlEncodedPostAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Collections.Generic.Dictionary<System.String,System.String> fields) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> FormUrlEncodedPostAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<System.String,System.String>> fields) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> FormUrlEncodedPostAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Collections.Specialized.NameValueCollection fields) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> FormUrlEncodedPostAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Object values) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> GetAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Collections.Generic.KeyValuePair<System.String,System.String>[] values) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> GetAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Guid id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> GetAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Int32 id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> GetAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Object args) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> MultipartFormPostAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Collections.Generic.Dictionary<System.String,System.String> fields) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> MultipartFormPostAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Collections.Generic.IEnumerable<System.Collections.Generic.KeyValuePair<System.String,System.String>> fields) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> MultipartFormPostAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Collections.Specialized.NameValueCollection fields) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response> PatchAsync(Vip.RestClient.ClientApi client,System.String endpoint,System.Object value,System.Guid id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response> PatchAsync(Vip.RestClient.ClientApi client,System.String endpoint,System.Object value,System.Int32 id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> PatchAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Object value,System.Guid id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> PatchAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Object value,System.Int32 id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response> PostAsync(Vip.RestClient.ClientApi client,System.String endpoint,System.Object value,System.Guid id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response> PostAsync(Vip.RestClient.ClientApi client,System.String endpoint,System.Object value,System.Int32 id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> PostAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Object value,System.Guid id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response<T>> PostAsync<T>(Vip.RestClient.ClientApi client,System.String endpoint,System.Object value,System.Int32 id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response> PutAsync(Vip.RestClient.ClientApi client,System.String endpoint,System.Object value,System.Guid id) extension
+M public static System.Threading.Tasks.Task<Vip.RestClient.Response> PutAsync(Vip.RestClient.ClientApi client,System.String endpoint,System.Object value,System.Int32 id) extension
+T public class Vip.RestClient.UnsuccessfulStatusCodeException : System.Net.Http.HttpRequestException,System.Runtime.Serialization.ISerializable
+C public (Vip.RestClient.Response response)
+P public instance Vip.RestClient.Response Response {get:public;}
+T public class Vip.RestClient.UnsuccessfulStatusCodeException<T> : System.Net.Http.HttpRequestException,System.Runtime.Serialization.ISerializable
+C public (Vip.RestClient.Response response,T error)
+P public instance T ErrorInformation {get:public;}
+P public instance Vip.RestClient.Response Response {get:public;}

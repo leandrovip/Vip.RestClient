@@ -1,0 +1,103 @@
+# Vip.RestClient
+
+> Biblioteca cliente REST para .NET, com envelopes `Response`/`Response<T>` e suporte a downloads para um `Stream` fornecido pelo consumidor.
+
+Este arquivo é contexto e índice portátil para OpenCode, Codex, Claude e outros LLMs. Sua presença não
+garante carregamento automático nem substitui as convenções de descoberta ou configuração próprias de
+cada ferramenta. Prompt sugerido: **Leia `llms.txt` e os `AGENTS.md` aplicáveis antes de trabalhar.**
+
+Os `AGENTS.md` contêm regras operacionais por escopo; este guia não as substitui nem tem precedência
+sobre código, projetos e documentação versionados. Se houver divergência, inspecione as fontes atuais
+antes de afirmar contratos. Não use `bin/`, `obj/` ou `.vs/` como fonte de verdade.
+
+O projeto da biblioteca é `netstandard2.0`, usa Newtonsoft.Json `13.0.3`, declara licença MIT e põe
+todos os tipos no namespace `Vip.RestClient`, mesmo em subpastas. A solução também contém a demonstração
+manual `net9.0-windows` e os testes automatizados xUnit `net9.0`; esses targets não provam suporte ou
+comportamento em outros runtimes.
+
+**Uso e contratos principais**
+
+- O construtor `ClientApi(string baseUrl, HttpClientHandler clientHandler = null, JsonSerializerSettings jsonSerializerSettings = null)` cria seu `HttpClient`;
+  normaliza a barra final, configura descompressão GZip/Deflate e adiciona `Accept: application/json`.
+  `FromHttpClient(baseUrl, httpClient, jsonSerializerSettings = null)` envolve uma instância existente
+  sem alterar sua configuração ao criar o wrapper. O chamador mantém seu ciclo de vida; `SetHeader` e
+  `ConfigureHttpClient`, se chamados, alteram a instância compartilhada.
+- Comece com `GetAsync<T>(endpoint)` quando quiser um `Response<T>`. Verifique `IsSuccessStatusCode`
+  ou chame `EnsureSuccessStatusCode()`; status HTTP malsucedidos normalmente retornam envelope,
+  enquanto falhas de transporte, eventos ou parsing podem lançar. Endpoints relativos usam a base e
+  os absolutos podem substituí-la; headers padrão compartilhados podem acompanhá-los, então não trate
+  a base como allowlist de host nem como proteção para credenciais.
+- `SendAsync(HttpRequestMessage, CancellationToken)` e `SendAsync<T>(HttpRequestMessage, CancellationToken)`
+  recebem a mensagem e o conteúdo preparados pelo chamador, que mantém seu ownership. Não há
+  serialização automática de objeto nesse caminho. `ResponseContentRead` bufferiza o corpo inteiro
+  durante o envio; o token coopera com a operação HTTP, não interrompe parsing ou callbacks síncronos
+  depois dela. Os métodos de conveniência por verbo usam `ResponseHeadersRead` e não recebem token.
+- `DownloadAsync(string endpoint, Stream destination, CancellationToken cancellationToken)` faz GET
+  com `ResponseHeadersRead` e copia o sucesso para o destino gravável enquanto a resposta está aberta,
+  com buffer de cópia solicitado de 81.920 bytes. A biblioteca possui request/resposta/origem; o
+  consumidor possui o destino, escrito da posição atual sem ser descartado, descarregado, reposicionado
+  ou truncado pelo método. Em status HTTP malsucedido, retorna metadados sem ler o corpo nem escrever
+  no destino; `ErrorResponseData` é `null`. Falha ou cancelamento durante a cópia pode deixar bytes
+  parciais, sem rollback.
+- O token do download coopera no envio e na cópia; `ReadAsStreamAsync()` não recebe token, e
+  runtime/handler/streams podem ignorar cancelamento. O timeout do `HttpClient` cobre a fase até os
+  headers, não um prazo total garantido para copiar. O buffer de 81.920 bytes não é limite absoluto de
+  memória: conteúdo/handlers customizados podem bufferizar e destinos como `MemoryStream` crescem com
+  os dados. `GetAsync<Stream>` legado continua sem um stream seguro após o retorno; `byte[]` carrega
+  o conteúdo inteiro em memória.
+- `JsonSerializerSettings` do cliente são usadas na serialização de objetos de saída POST/PUT/PATCH,
+  não na desserialização de resposta/erro ou no fluxo de request preparada. `ResponseDataReceived`
+  ocorre no fluxo genérico; seu conteúdo é nulo para `byte[]` e `Stream`. O download não genérico não
+  emite esse evento.
+- `Helper.BuildUrlEncodedUrl` sempre acrescenta `?`, não combina query existente e codifica valores, mas não
+  chaves; propriedades nulas podem causar exceção ao montar parâmetros. JWT é decodificado/analisado,
+  não validado: não confie nele para verificar assinatura, expiração ou claims.
+
+**Trabalho e validação**
+
+- Preserve compatibilidade pública e comportamento observável. Não remova nem reorganize regiões
+  `#region` existentes; siga o estilo local, que mistura namespaces em bloco e file-scoped. Não
+  regenere o baseline da API para acomodar mudanças: a caracterização mantém 117 linhas congeladas e
+  permite explicitamente `FromHttpClient`, os dois overloads `SendAsync` e `DownloadAsync`.
+- Testes automatizados usam handler HTTP falso. Classes de teste na raiz contêm apenas testes; apoios
+  ficam em `Utils/` (`Dtos`, `Models`, `Contents`, `Streams`). A demonstração não é teste: envia
+  requests reais ao httpbin e espera `Console.ReadKey()`; não a execute como validação automática.
+- Exemplos devem usar `https://api.example.com`, credenciais fictícias e não ser executados. Não faça
+  requests HTTP reais, execute workflows de publicação ou faça stage/commit/push como validação;
+  ações explícitas do usuário e `AGENTS.md` aplicáveis prevalecem.
+- Comandos de referência, a partir da raiz (listá-los não significa que foram executados):
+
+```sh
+dotnet restore ./src/Vip.RestClient.sln
+dotnet build ./src/Vip.RestClient.sln --configuration Release --no-restore
+dotnet test ./tests/Vip.RestClient.Tests/Vip.RestClient.Tests.csproj --configuration Release
+```
+
+## Código e projetos
+
+- [Solução](src/Vip.RestClient.sln): biblioteca, demonstração e testes automatizados.
+- [Projeto da biblioteca](src/Vip.RestClient/Vip.RestClient.csproj): target, dependências e
+  configuração de pacote.
+- [ClientApi](src/Vip.RestClient/ClientApi.cs): construtores, requisições, eventos, envio preparado e download.
+- [Response](src/Vip.RestClient/Models/Response.cs): envelopes, metadados e métodos para exigir status de sucesso.
+- [Extensões REST](src/Vip.RestClient/Extensions/RestExtensions.cs): IDs, parâmetros e formulários.
+- [Helper](src/Vip.RestClient/Utils/Helper.cs): construção de parâmetros e URL.
+- [Projeto de testes](tests/Vip.RestClient.Tests/Vip.RestClient.Tests.csproj): configuração da suíte xUnit.
+- [Caracterização da API](tests/Vip.RestClient.Tests/ApiSurfaceCharacterizationTests.cs): comparação dos contratos públicos e protegidos.
+- [Baseline da API](tests/Vip.RestClient.Tests/ApiSurface.baseline.txt): superfície preexistente congelada.
+- [Testes de download](tests/Vip.RestClient.Tests/DownloadStreamingTests.cs): cópia, erros, cancelamento e ownership.
+- [Projeto da demonstração](tests/Vip.RestClient.Demo/Vip.RestClient.Demo.csproj): execução manual com rede e interação de console; não usar em validação automática.
+- [Licença MIT](LICENSE): condições de uso e distribuição.
+
+## Documentação e regras
+
+- [AGENTS.md da raiz](AGENTS.md): instruções operacionais gerais e comandos de referência.
+- [AGENTS.md da biblioteca](src/Vip.RestClient/AGENTS.md): instruções para mudanças na biblioteca.
+- [AGENTS.md dos testes](tests/Vip.RestClient.Tests/AGENTS.md): organização e isolamento dos testes.
+- [AGENTS.md da demonstração](tests/Vip.RestClient.Demo/AGENTS.md): cuidados com rede e execução manual.
+- [Índice da documentação](docs/README.md): navegação e visão geral.
+- [Mapa do repositório](docs/estrutura.md): estrutura e responsabilidades dos arquivos.
+- [Arquitetura e contratos](docs/arquitetura.md): fluxos HTTP, respostas, eventos e ciclo de vida.
+- [Uso](docs/uso.md): exemplos de integração com a biblioteca.
+- [Desenvolvimento](docs/desenvolvimento.md): projetos, comandos e validação.
+- [Particularidades](docs/particularidades.md): limitações e cuidados de compatibilidade.

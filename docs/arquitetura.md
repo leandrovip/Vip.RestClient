@@ -1,0 +1,114 @@
+# Arquitetura e contratos observados
+
+Este texto descreve o snapshot atual com base principalmente em [`ClientApi.cs`](../src/Vip.RestClient/ClientApi.cs), [`Response.cs`](../src/Vip.RestClient/Models/Response.cs), [`RestExtensions.cs`](../src/Vip.RestClient/Extensions/RestExtensions.cs), [`Helper.cs`](../src/Vip.RestClient/Utils/Helper.cs) e nos arquivos JWT. Não transforma limitações em garantias nem recomendações em comportamento implementado.
+
+## Inicialização e URI
+
+O construtor legado `ClientApi(string baseUrl, HttpClientHandler clientHandler = null, JsonSerializerSettings jsonSerializerSettings = null)` permanece inalterado: acrescenta `/` ao fim de `baseUrl` quando ausente, cria `BaseUri` e um `HttpClient` próprio a partir do handler fornecido ou de um novo. Nesse caminho, sobrescreve `AutomaticDecompression` para `GZip | Deflate` e adiciona `Accept: application/json`. O construtor recebe `HttpClientHandler`, não uma instância `HttpClient`.
+
+Para receber um cliente já criado pela aplicação, a factory pública é `ClientApi.FromHttpClient(string baseUrl, HttpClient httpClient, JsonSerializerSettings jsonSerializerSettings = null)`. Ela rejeita `httpClient == null` primeiro com `ArgumentNullException` (`ParamName == "httpClient"`); com cliente válido, `baseUrl == null` resulta em `ArgumentNullException` (`ParamName == "baseUrl"`).
+
+A factory passa a instância exata de `HttpClient` ao construtor privado do wrapper e cria `BaseUri` a partir do `baseUrl` explícito, normalizado com `/` final. Não cria outro cliente nem altera `BaseAddress`, `Timeout`, `DefaultRequestHeaders` (incluindo `Accept`) ou configuração de descompressão do handler. Não infere a base de `HttpClient.BaseAddress`. URI malformada segue o comportamento de `System.Uri`; não há validação adicional de esquema prometida.
+
+Ambos os caminhos resolvem endpoints com `new Uri(BaseUri, endpoint)`. URI absoluta pode substituir a base; um endpoint iniciado por `/` pode trocar o caminho-base pelo caminho na raiz do host. A normalização da barra final não impede esse comportamento normal de resolução de URI.
+
+## Fluxo de requisição e ciclo de vida
+
+As APIs assíncronas legadas abrangem GET, POST, PUT, PATCH, DELETE e OPTIONS. Nos fluxos genérico e não genérico desses métodos, `BeforeSend` é emitido com o `HttpRequestMessage` antes do registro do instante inicial; se um handler lançar, a chamada também lança e o envio não ocorre. Esses fluxos usam `HttpCompletionOption.ResponseHeadersRead`.
+
+`ClientApi` não implementa `IDisposable`. Os métodos de conveniência por verbo não aceitam `CancellationToken`; os overloads `SendAsync` descritos abaixo recebem token por chamada. Não há política própria de retry, renovação ou validação de token. Com `FromHttpClient`, ownership e ciclo de vida da instância permanecem com o chamador, que também pode configurá-la via `ConfigureHttpClient(Action<HttpClient>)` enquanto estiver ativa. A factory não registra serviços nem cria integração automática com DI ou com uma factory de clientes; a aplicação pode fornecer uma instância que ela própria gerencia. A biblioteca não descarta automaticamente o cliente externo. Entretanto, `ConfigureHttpClient` entrega a instância real ao callback; se o consumidor chamar `Dispose` nesse callback ou diretamente, encerrará o cliente compartilhado e afetará todos os wrappers que o utilizam. Os métodos normalmente colocam a mensagem de requisição e a resposta em `using`, mas o caminho de OPTIONS cria a mensagem sem `using`.
+
+### Requests preparadas e cancelamento por chamada
+
+`ClientApi` acrescenta duas entradas públicas: `Task<Response> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)` e `Task<Response<T>> SendAsync<T>(HttpRequestMessage request, CancellationToken cancellationToken)`. O token é obrigatório; passe `CancellationToken.None` quando não houver cancelamento a solicitar. Essas APIs aceitam uma mensagem preparada pelo chamador, inclusive seu método, URI e `HttpContent`; não há overload que receba um objeto para serialização automática.
+
+Antes de invocar `BeforeSend`, validam a mensagem e seu `RequestUri`, resolvem URI relativa com `BaseUri` e atribuem a URI absoluta resolvida à própria mensagem. URI absoluta pode substituir a base; esta não é uma allowlist de hosts. O URI resolvido originalmente é o usado no evento de resposta genérico, mesmo se um handler `BeforeSend` alterar depois `RequestUri`. Para mensagem nula é gerada `ArgumentNullException` (`ParamName == "request"`); `RequestUri` nula gera `ArgumentException` (`ParamName == "request"`). Como os métodos são `async Task`, essas falhas são observadas como tarefas faulted, não como exceções síncronas na chamada. Uma vez validada e resolvida a URI, um token já cancelado é verificado antes de `BeforeSend` e do envio.
+
+O envio usa `HttpCompletionOption.ResponseContentRead` com o token fornecido. Assim, o corpo é armazenado em buffer em memória durante a operação HTTP, antes dos eventos, leitura tipada e parsing. A política é fixa: não há parâmetro para escolher `ResponseHeadersRead`. O caminho não genérico também espera esse buffering em respostas de sucesso, embora `Response` não exponha o corpo de sucesso. Limites como `HttpClient.MaxResponseContentBufferSize` e timeout se aplicam. Considere o custo de memória de corpos grandes e requests simultâneos, especialmente para downloads; a biblioteca não faz uma promessa numérica de uso nem implementa streaming de grande corpo neste fluxo.
+
+O token é encaminhado a `HttpClient.SendAsync` e pode cancelar cooperativamente o envio e o buffering do corpo; a efetividade depende também do runtime, do handler e de `HttpContent`. Handlers ou conteúdos customizados podem ignorá-lo, e não há garantia de interromper trabalho remoto. A biblioteca não descarta o cliente compartilhado nem chama `CancelPendingRequests` para cancelar uma chamada individual. Depois do buffering, callbacks de eventos e parsing JSON são síncronos: o token não os interrompe e a chamada pode terminar normalmente se ele for cancelado nessa fase. Cancelamento observado pelo envio resulta em tarefa cancelada; falhas de envio/buffering faultam a tarefa. Em ambos os casos, a tarefa pode terminar antes de `ResponseDataReceived` e da formação do envelope. Se envio, buffering e processamento da resposta terminarem, status HTTP de erro continuam representados no envelope e `EnsureSuccessStatusCode` permanece explícito.
+
+O request e seu conteúdo pertencem ao chamador; mantenha-os vivos durante a chamada e descarte-os pelo ciclo de vida do consumidor, por exemplo com `using`. O conteúdo é enviado diretamente, sem passar por `JsonSerializerSettings`; quando precisar de JSON, prepare `request.Content` na aplicação usando a serialização e o conteúdo apropriados. A leitura/parsing legado e o descarte da resposta continuam valendo: `Stream` em `Data` não é um streaming seguro após o retorno. Os métodos antigos continuam no caminho `ResponseHeadersRead` sem token; não há conversão automática deles para os novos overloads.
+
+## Download para um destino fornecido pelo consumidor
+
+`DownloadAsync(string endpoint, Stream destination, CancellationToken cancellationToken)` retorna `Task<Response>` e faz um GET para copiar o corpo de sucesso a um destino fornecido pela aplicação. A validação de `endpoint == null` produz `ArgumentNullException` com `ParamName == "endpoint"`; `destination == null` produz `ArgumentNullException` com `ParamName == "destination"`; e `destination.CanWrite == false` produz `ArgumentException` com `ParamName == "destination"`. Como o método é `async Task`, essas falhas são observadas como tarefas faulted. As validações ocorrem antes da resolução do URI; endpoints relativos seguem `BaseUri` e endpoints absolutos podem substituí-la.
+
+Depois da validação e resolução do URI, um token já cancelado é verificado antes de `BeforeSend` e do envio. O método cria e possui a mensagem GET, chama `BeforeSend` antes de iniciar a medição e envia com `HttpCompletionOption.ResponseHeadersRead`. Depois de receber os headers, obtém o stream do conteúdo e copia com `CopyToAsync(destination, 81920, cancellationToken)` enquanto a resposta HTTP permanece aberta. `ReadAsStreamAsync()` não recebe token neste target. O envelope devolvido contém metadados da resposta e duração que inclui a transferência; usa a construção interna de metadados, sem adicionar um helper público, e não usa `Response.Build`, que leria corpo de erro, nem expõe o stream de origem. `ResponseDataReceived` não é emitido neste fluxo não genérico.
+
+Em status HTTP malsucedido, não lê o corpo de erro nem escreve no destino. Ainda retorna `Response` com status, motivo e headers; `ErrorResponseData` permanece `null`, e `EnsureSuccessStatusCode()` continua sendo uma decisão explícita do consumidor. Em sucesso, os bytes são copiados a partir da posição corrente do destino: o método não descarta, descarrega (`Flush`), reposiciona (`Seek`) ou trunca (`SetLength`) o stream da aplicação. Um destino não seekable é válido se puder gravar.
+
+O stream de origem e a resposta pertencem ao método e são descartados após a cópia, inclusive em erro; a aplicação mantém o ownership do destino. Falhas de transporte, leitura, escrita ou cancelamento podem deixar dados parciais no destino e não há rollback automático. O cliente permanece disponível para chamadas seguintes. O token é encaminhado ao envio e à cópia, mas a aquisição do stream não aceita token; a cooperação depende também do runtime, handler e implementação dos streams, que podem ignorar o cancelamento. Com `ResponseHeadersRead`, o timeout de `HttpClient` cobre a fase até os headers; a aplicação pode usar um token com prazo total, sem garantia de interrupção forçada.
+
+O fluxo não bufferiza intencionalmente o arquivo completo na biblioteca e solicita um buffer de cópia de 81.920 bytes. Isso não garante uso absoluto de memória constante: handlers/conteúdos customizados podem bufferizar e um destino como `MemoryStream` acumula naturalmente os dados. Também não há promessa de taxa numérica ou limite de throughput; a transferência pode gravar à medida que os dados chegam, sujeita às implementações envolvidas. Essa operação não altera a semântica dos métodos antigos; em particular, `GetAsync<Stream>` continua sem oferecer um stream seguro após o retorno.
+
+## Conteúdo enviado
+
+Objetos enviados em POST, PUT e PATCH são serializados por `JsonConvert.SerializeObject(value, _jsonSettings)` e enviados como UTF-8 `application/json`. O overload genérico `PostAsync<T>(string, HttpContent)` e as extensões de formulário enviam `HttpContent` diretamente; não passam esse conteúdo pela serialização JSON. Não há overload não genérico de POST especificamente tipado para `HttpContent`: se um `HttpContent` for passado ao overload `PostAsync(string, object)`, ele será tratado pelo caminho de serialização do parâmetro `object`.
+
+As `JsonSerializerSettings` opcionais fornecidas ao construtor ou à factory são usadas somente na serialização de saída. `GetResponseAsync<T>` desserializa corpos JSON com `JsonConvert.DeserializeObject<T>(content)` sem settings. Parsing de corpo de erro e de conteúdo JWT também não reaproveita `_jsonSettings`.
+
+## Leitura de resposta e envelopes
+
+O fluxo não genérico legado de conveniência retorna `Response`. Em sucesso, não lê nem guarda o corpo; em status não bem-sucedido, `Response.Build` lê o corpo de forma síncrona com `.Result` para preencher `ErrorResponseData`. `SendAsync(request, cancellationToken)` não genérico também retorna `Response`, mas o seu `ResponseContentRead` bufferiza o corpo antes de criar o envelope; o corpo de sucesso continua sem ser exposto. O envelope inclui status, motivo, flags, headers, referência a `RequestMessage`, erro e duração.
+
+O fluxo genérico retorna `Response<T>`:
+
+- Para `T == string`, lê o corpo como texto; em sucesso atribui esse texto a `Data`.
+- Para `T == byte[]` ou `T == Stream`, lê o conteúdo binário antes de verificar o status. Assim, `Data` pode conter bytes ou stream também em resposta de erro e `ErrorResponseData` fica sem esse corpo binário.
+- Para outros tipos, lê texto. Em erro, mantém esse texto em `ErrorResponseData` e `Data` continua em `default(T)`. Em sucesso, desserializa JSON sem settings, salvo o tratamento específico de `Jwt` descrito adiante.
+
+No caminho genérico, somente um conteúdo cujo prefixo literal seja `%7B` passa por `WebUtility.UrlDecode`; isso pode alterar o texto que é devolvido como `string`. O tipo exato `Jwt` é tratado de forma especial: aspas são removidas do conteúdo, se encontradas, antes de `Jwt.Parse`. `Jwt<T>` não recebe tratamento especial em `ClientApi`.
+
+Falhas HTTP não se tornam automaticamente exceções: os métodos retornam o envelope, e `EnsureSuccessStatusCode()` ou `EnsureSuccessStatusCode<TError>()` lança `UnsuccessfulStatusCodeException` somente quando invocado pelo consumidor. O método genérico tenta interpretar o erro, mas usa `default(TError)` se o parsing falhar. Falhas de transporte, eventos e desserialização podem lançar antes de um envelope ser retornado.
+
+`HttpResponseMessage` é descartado antes do retorno em todos os fluxos; em `DownloadAsync`, isso ocorre depois da cópia. O `Stream` de `Data` nos métodos genéricos existentes não deve ser considerado streaming reutilizável ou garantidamente disponível após o retorno, pois está associado ao conteúdo/resposta descartados. `DownloadAsync` não expõe o stream de origem. `RequestMessage` e os headers expostos são referências a objetos associados à resposta já encerrada; não representam uma resposta ainda aberta.
+
+## Eventos e duração
+
+`BeforeSend` existe nos fluxos genérico e não genérico, incluindo `DownloadAsync`. `ResponseDataReceived` é invocado somente no fluxo genérico, depois de ler o conteúdo e antes de decodificar/deserializar o texto e construir o envelope. Para `byte[]` e `Stream`, a propriedade `Content` do evento é `null`; o download não genérico também não emite esse evento. Os handlers de evento podem lançar e interromper a operação.
+
+`ResponseEvent.Received` é preenchido com `DateTime.UtcNow`. Já `Response.Duration` é calculado como `DateTime.Now - start`; inclui envio e processamento, inclusive evento e parsing no genérico, e a cópia do `DownloadAsync`, mas exclui o handler de `BeforeSend`, pois o relógio começa depois dele. Não é uma medição monotônica.
+
+## Parâmetros, headers e formulários
+
+As extensões em `RestExtensions` acrescentam IDs `int` e `Guid` ao caminho em vários verbos. Para GET, permitem parâmetros por pares ou objeto. `Helper.BuildParams` enumera propriedades públicas por reflexão: valores `decimal`, `float` e `double` usam cultura invariável; outros valores usam `ToString()` comum. Valores nulos de propriedades podem lançar, e objetos/coleções complexas não são achatados.
+
+`Helper.BuildUrl` codifica valores, mas não as chaves, e sempre concatena `?`, mesmo que o endpoint já contenha uma consulta. O overload `OptionsAsync` que recebe objeto converte propriedades em headers; não as trata como query string.
+
+As extensões de POST de formulário são genéricas (`Response<T>`): `MultipartFormPostAsync<T>` aceita `Dictionary<string, string>`, `NameValueCollection` ou `IEnumerable<KeyValuePair<string, string>>`; cada par vira um campo `StringContent` em `MultipartFormDataContent`. Não há helper específico para arquivos. `FormUrlEncodedPostAsync<T>` aceita essas mesmas fontes e também `object`, convertido em pares por `Helper.BuildParams`, e usa `FormUrlEncodedContent`.
+
+## Catálogo público resumido
+
+Tabela das principais sobrecargas de `ClientApi` e das extensões públicas de `RestExtensions`. `Response` indica retorno não genérico; `Response<T>` indica retorno tipado.
+
+| Verbo | `ClientApi` | Extensões (`RestExtensions`) |
+| --- | --- | --- |
+| GET | `GetAsync(endpoint)` → `Response`; `GetAsync<T>(endpoint)` → `Response<T>` | Somente genéricas: IDs `int`/`Guid` no caminho; query por `KeyValuePair<string,string>[]` ou `object`. |
+| POST | Sem corpo → `Response`; `object` → `Response` ou `Response<T>`; `HttpContent` → somente `Response<T>`. | `object` com ID `int`/`Guid` → versões `Response` e `Response<T>`. |
+| PUT | `object` → `Response` ou `Response<T>`. | Somente não genérica: `object` com ID `int`/`Guid` → `Response`. |
+| PATCH | Com ou sem `object` → versões `Response` e `Response<T>`. | Com `object` e ID `int`/`Guid` → versões `Response` e `Response<T>`. |
+| DELETE | Sem corpo → `Response` ou `Response<T>`. | ID `int`/`Guid` → versões `Response` e `Response<T>`. |
+| OPTIONS | Somente não genérica: `object` (propriedades convertidas em headers), `IEnumerable<(string, string)>` ou `IEnumerable<KeyValuePair<string, string>>`. | Não há extensões OPTIONS. |
+| Download | `DownloadAsync(endpoint, destination, cancellationToken)` → `Response`. | GET copiado para o stream gravável do consumidor; não há overloads de progresso, retomada ou faixa. |
+| POST de formulário | Não há overload específico em `ClientApi` para construir formulários. | `MultipartFormPostAsync<T>` e `FormUrlEncodedPostAsync<T>` retornam `Response<T>`; as fontes aceitas estão descritas acima. |
+
+O overload de `PostAsync(string, object)` serializa seu argumento como JSON. A ausência de um overload não genérico específico para `HttpContent` não significa que a linguagem impeça passar uma instância ao parâmetro `object`; esse caso não é o envio direto de conteúdo que o overload genérico `PostAsync<T>(string, HttpContent)` oferece. Para OPTIONS, o argumento objeto também representa propriedades convertidas em headers, não query string.
+
+Headers padrão podem ser alterados com `SetHeader`, `SetAuthorization`, `SetAuthorizationBearer` e `RemoveAuthorization`. Com um cliente compartilhado, essas chamadas e `ConfigureHttpClient` modificam a mesma instância e os respectivos headers padrão são observáveis por todos os wrappers que a usam. Há locks em algumas mutações, mas isso não constitui uma garantia de segurança completa entre threads para todas as operações do cliente.
+
+`BaseUri` não é uma fronteira de segurança: endpoints absolutos podem direcionar chamadas a outro host e não há verificação de origem adicionada pela factory. Headers padrão do `HttpClient` acompanham requests enviados por ele, inclusive wrappers; se contiverem dados sensíveis, cabe à aplicação isolar clientes/credenciais e controlar os destinos. A reutilização não cria isolamento por wrapper.
+
+## JWT
+
+`JwtBase.ParseText` exige token não vazio e três segmentos separados por ponto, decodifica Base64url em header/payload e converte a assinatura em bytes. `Jwt.Parse` usa `ParseText` e desserializa o payload diretamente em `JwtGeneric`, sem criar um `Jwt<JwtGeneric>` intermediário; `Jwt<T>.Parse` permite payload tipado. Isso é apenas decodificação e parsing. Não há validação de assinatura, expiração, issuer ou audience.
+
+`JwtGeneric` não declara atributos `JsonProperty` para nomes padronizados como `iss`, `exp`, `iat`, `nbf`, `sub` e `aud`, e seus nomes de propriedade diferem de vários nomes de claim. Não se deve presumir mapeamento correto desses claims. Além disso, base64 inválido pode resultar em `null` no decoder; para header/payload, `GetBase64` acessa `arr.Length` sem validar `null` e pode lançar `NullReferenceException`.
+
+## Tipos de exceção
+
+`UnsuccessfulStatusCodeException` e sua versão genérica carregam o envelope `Response`; a variante tipada também expõe `ErrorInformation`. `ApiException` possui construtor privado e fábrica interna, mas não participa do fluxo observado em `ClientApi`. Veja [Particularidades](particularidades.md) para recomendações e limites.
+
+## Projeto de testes
+
+`tests/Vip.RestClient.Tests` é a suíte automatizada xUnit, separada do executável manual `tests/Vip.RestClient.Demo`. Os testes usam um handler HTTP falso para não depender de requests externos e caracterizam comportamentos legados; isso não altera nem corrige o contrato da biblioteca.

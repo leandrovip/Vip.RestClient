@@ -14,13 +14,13 @@ public class Jwt : JwtBase
 
     public static Jwt Parse(string token)
     {
-        var data = Jwt<JwtGeneric>.Parse(token);
+        var data = ParseText(token);
         return new Jwt
         {
             Header = data.Header,
             Payload = data.Payload,
             Signature = data.Signature,
-            Content = data.Content,
+            Content = JsonConvert.DeserializeObject<JwtGeneric>(data.Payload),
             OriginalToken = token
         };
     }
